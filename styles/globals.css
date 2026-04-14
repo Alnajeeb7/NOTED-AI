@@ -1,0 +1,250 @@
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,100..900;1,9..144,100..900&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 0 0% 9%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 9%;
+    --primary: 0 0% 9%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 0 0% 96%;
+    --secondary-foreground: 0 0% 9%;
+    --muted: 0 0% 96%;
+    --muted-foreground: 0 0% 45%;
+    --accent: 0 0% 94%;
+    --accent-foreground: 0 0% 9%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 90%;
+    --input: 0 0% 90%;
+    --ring: 0 0% 9%;
+    --radius: 6px;
+    --sidebar: 0 0% 97%;
+    --sidebar-foreground: 0 0% 9%;
+    --sidebar-accent: 0 0% 93%;
+    --sidebar-border: 0 0% 90%;
+    --font-geist: 'Geist', ui-sans-serif, system-ui, sans-serif;
+    --font-geist-mono: 'Geist Mono', ui-monospace, monospace;
+    --font-fraunces: 'Fraunces', serif;
+  }
+
+  .dark {
+    --background: 0 0% 8%;
+    --foreground: 0 0% 93%;
+    --card: 0 0% 10%;
+    --card-foreground: 0 0% 93%;
+    --popover: 0 0% 10%;
+    --popover-foreground: 0 0% 93%;
+    --primary: 0 0% 93%;
+    --primary-foreground: 0 0% 9%;
+    --secondary: 0 0% 14%;
+    --secondary-foreground: 0 0% 93%;
+    --muted: 0 0% 14%;
+    --muted-foreground: 0 0% 55%;
+    --accent: 0 0% 16%;
+    --accent-foreground: 0 0% 93%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 18%;
+    --input: 0 0% 18%;
+    --ring: 0 0% 83%;
+    --sidebar: 0 0% 10%;
+    --sidebar-foreground: 0 0% 93%;
+    --sidebar-accent: 0 0% 14%;
+    --sidebar-border: 0 0% 16%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1, "ss01" 1;
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-border rounded-full;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-muted-foreground/30;
+  }
+}
+
+@layer components {
+  /* Notion-like hover states */
+  .sidebar-item {
+    @apply flex items-center gap-1.5 w-full px-2 py-1 rounded-md text-sm text-sidebar-foreground cursor-pointer select-none;
+    @apply hover:bg-sidebar-accent transition-colors duration-100;
+  }
+
+  .sidebar-item.active {
+    @apply bg-sidebar-accent font-medium;
+  }
+
+  /* Editor styles */
+  .noted-editor {
+    @apply w-full min-h-screen px-[96px] py-12 max-w-[900px] mx-auto;
+  }
+
+  @media (max-width: 768px) {
+    .noted-editor {
+      @apply px-6;
+    }
+  }
+
+  /* AI Agent streaming text */
+  .ai-streaming::after {
+    content: '▋';
+    @apply animate-pulse-soft;
+  }
+
+  /* Shimmer loading */
+  .shimmer {
+    background: linear-gradient(
+      90deg,
+      hsl(var(--muted)) 25%,
+      hsl(var(--accent)) 50%,
+      hsl(var(--muted)) 75%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+  }
+
+  /* Gradient text */
+  .gradient-text {
+    background: linear-gradient(135deg, hsl(var(--foreground)) 0%, hsl(var(--muted-foreground)) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* Focus ring */
+  .focus-ring {
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2;
+  }
+
+  /* Dropdown styles */
+  .dropdown-item {
+    @apply flex items-center gap-2 px-2 py-1.5 text-sm rounded-md cursor-pointer select-none;
+    @apply hover:bg-accent hover:text-accent-foreground transition-colors duration-100;
+    @apply focus:bg-accent focus:text-accent-foreground focus:outline-none;
+  }
+
+  /* Page cover gradient overlays */
+  .cover-overlay {
+    background: linear-gradient(to bottom, transparent 60%, hsl(var(--background)) 100%);
+  }
+}
+
+/* BlockNote editor overrides */
+.bn-editor {
+  font-family: var(--font-geist), ui-sans-serif, system-ui, sans-serif !important;
+  font-size: 16px !important;
+  line-height: 1.75 !important;
+  color: hsl(var(--foreground)) !important;
+  background: transparent !important;
+}
+
+.bn-editor .bn-block-content {
+  @apply text-foreground;
+}
+
+.bn-editor h1 {
+  font-family: var(--font-fraunces), serif !important;
+  font-size: 2.5rem !important;
+  font-weight: 700 !important;
+  letter-spacing: -0.02em !important;
+  line-height: 1.2 !important;
+}
+
+.bn-editor h2 {
+  font-family: var(--font-fraunces), serif !important;
+  font-size: 1.75rem !important;
+  font-weight: 600 !important;
+  letter-spacing: -0.01em !important;
+}
+
+.bn-editor h3 {
+  font-family: var(--font-fraunces), serif !important;
+  font-size: 1.35rem !important;
+  font-weight: 600 !important;
+}
+
+.bn-container {
+  background: transparent !important;
+}
+
+/* Dark mode BlockNote */
+.dark .bn-editor {
+  color: hsl(var(--foreground)) !important;
+}
+
+.dark .bn-menu,
+.dark .bn-slash-menu {
+  background: hsl(var(--popover)) !important;
+  border-color: hsl(var(--border)) !important;
+  color: hsl(var(--popover-foreground)) !important;
+}
+
+/* Animations */
+@keyframes slideInFromLeft {
+  from { opacity: 0; transform: translateX(-100%); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes slideInFromRight {
+  from { opacity: 0; transform: translateX(100%); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.slide-from-left {
+  animation: slideInFromLeft 0.25s ease-out;
+}
+
+.slide-from-right {
+  animation: slideInFromRight 0.25s ease-out;
+}
+
+/* Notion-like page title */
+.page-title {
+  font-family: var(--font-fraunces), serif;
+  font-size: 2.8rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+  color: hsl(var(--foreground));
+  outline: none;
+  border: none;
+  background: transparent;
+  width: 100%;
+  resize: none;
+  padding: 0;
+}
+
+.page-title::placeholder {
+  color: hsl(var(--muted-foreground) / 0.5);
+}
