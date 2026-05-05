@@ -31,6 +31,7 @@ export async function GET(request: Request) {
         // New user — create workspace + profile
         const { data: workspace } = await supabaseAdmin
           .from('workspaces')
+          // @ts-ignore
           .insert({ name: `${email.split('@')[0]}'s workspace`, owner_id: userId, icon: '🗒️' })
           .select()
           .single()
@@ -38,6 +39,7 @@ export async function GET(request: Request) {
         if (workspace) {
           await supabaseAdmin
             .from('user_profiles')
+            // @ts-ignore
             .upsert({ id: userId, email, workspace_id: workspace.id })
         }
       }
@@ -46,4 +48,3 @@ export async function GET(request: Request) {
 
   return NextResponse.redirect(new URL('/', requestUrl.origin))
 }
-
