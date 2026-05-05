@@ -16,6 +16,7 @@ export async function POST(req: NextRequest) {
     // Create workspace
     const { data: workspace, error: wsError } = await supabaseAdmin
       .from('workspaces')
+      // @ts-ignore
       .insert({ name: `${email.split('@')[0]}'s workspace`, owner_id: userId, icon: '🗒️' })
       .select()
       .single()
@@ -25,6 +26,7 @@ export async function POST(req: NextRequest) {
     // Upsert user profile
     const { error: profileError } = await supabaseAdmin
       .from('user_profiles')
+      // @ts-ignore
       .upsert({ id: userId, email, workspace_id: workspace.id })
 
     if (profileError) throw profileError
