@@ -86,7 +86,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
     setSaving(true)
     const { error } = await supabase
       .from('user_profiles')
-      .update({ full_name: fullName })
+      .update({ full_name: fullName } as any)
       .eq('id', user?.id ?? '')
     setSaving(false)
     if (error) toast.error(error.message)
