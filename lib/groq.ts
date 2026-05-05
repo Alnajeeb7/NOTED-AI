@@ -1,5 +1,5 @@
 import Groq from 'groq-sdk'
-import type { Tool } from 'groq-sdk/resources/chat/completions'
+type Tool = Groq.Chat.Completions.ChatCompletionTool
 
 // Only initialize the Groq client when needed (server-side)
 export const getGroqClient = () => {
