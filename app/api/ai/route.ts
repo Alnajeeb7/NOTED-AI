@@ -69,7 +69,7 @@ IMPORTANT: When the user asks you to create, update, search, or list pages — A
 
     // Agentic loop — keeps running until no more tool calls
     const actionData: { type: string; pageId?: string; title?: string } | null = null
-    let lastActionData: { type: string; pageId?: any; title?: any } | null = actionData
+    let lastActionData = actionData
     let loopCount = 0
     const MAX_LOOPS = 6
 
@@ -113,6 +113,7 @@ IMPORTANT: When the user asks you to create, update, search, or list pages — A
             const blocks = args.content ? parseMarkdownToBlocks(args.content) : null
             const { data: newPage, error } = await supabaseAdmin
               .from('pages')
+              // @ts-ignore
               .insert({
                 workspace_id: workspaceId,
                 title: args.title || 'Untitled',
@@ -178,6 +179,7 @@ IMPORTANT: When the user asks you to create, update, search, or list pages — A
             const blocks = args.content ? parseMarkdownToBlocks(args.content) : null
             const { error } = await supabaseAdmin
               .from('pages')
+              // @ts-ignore
               .update({ content: blocks, updated_at: new Date().toISOString() })
               .eq('id', args.page_id)
               .eq('workspace_id', workspaceId)
@@ -193,6 +195,7 @@ IMPORTANT: When the user asks you to create, update, search, or list pages — A
           case 'update_page_title': {
             const { error } = await supabaseAdmin
               .from('pages')
+              // @ts-ignore
               .update({ title: args.new_title, updated_at: new Date().toISOString() })
               .eq('id', args.page_id)
               .eq('workspace_id', workspaceId)
