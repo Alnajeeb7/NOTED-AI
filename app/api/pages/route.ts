@@ -33,6 +33,7 @@ export async function POST(req: NextRequest) {
 
   const { data, error } = await supabase
     .from('pages')
+    // @ts-ignore
     .insert({
       workspace_id,
       parent_id: parent_id || null,
@@ -59,6 +60,7 @@ export async function PATCH(req: NextRequest) {
 
   const { data, error } = await supabase
     .from('pages')
+    // @ts-ignore
     .update(updates)
     .eq('id', id)
     .select()
@@ -80,6 +82,7 @@ export async function DELETE(req: NextRequest) {
   // Archive instead of delete
   const { error } = await supabase
     .from('pages')
+    // @ts-ignore
     .update({ is_archived: true })
     .eq('id', id)
 
