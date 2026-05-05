@@ -47,7 +47,7 @@ export default function WorkspaceLayout({
 
     const { data: profile } = await supabase
       .from('user_profiles').select('*').eq('id', session.user.id).single()
-    if (profile) setUser({ ...profile, email: session.user.email ?? '' })
+    if (profile) setUser({ ...(profile as any), email: session.user.email ?? '' })
 
     setPagesLoading(true)
     const { data: pages } = await supabase
