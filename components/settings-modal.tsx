@@ -87,7 +87,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
     const { error } = await supabase
       .from('user_profiles')
       // @ts-ignore
-      .update({ full_name: fullName })
+      .update({ full_name: fullName } as never)
       .eq('id', user?.id ?? '')
     setSaving(false)
     if (error) toast.error(error.message)
@@ -100,7 +100,7 @@ export function SettingsModal({ open, onClose }: SettingsModalProps) {
     const { error } = await supabase
       .from('workspaces')
       // @ts-ignore
-      .update({ name: workspaceName, icon: workspaceIcon })
+      .update({ name: workspaceName, icon: workspaceIcon } as never)
       .eq('id', workspace.id)
     setSaving(false)
     if (error) toast.error(error.message)
