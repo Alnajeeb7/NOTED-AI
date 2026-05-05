@@ -67,7 +67,7 @@ export function Sidebar({ workspaceId, onOpenSettings, width = 240 }: SidebarPro
         const newPage = await res.json()
         addPage(newPage)
         if (parentId) {
-          setExpandedPages((prev) => new Set([...prev, parentId]))
+          setExpandedPages((prev) => new Set(Array.from(prev).concat(parentId)))
         }
         router.push(getPageUrl(workspaceId, newPage.id))
       } catch {
