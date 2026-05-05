@@ -69,7 +69,7 @@ IMPORTANT: When the user asks you to create, update, search, or list pages — A
 
     // Agentic loop — keeps running until no more tool calls
     const actionData: { type: string; pageId?: string; title?: string } | null = null
-    let lastActionData = actionData
+    let lastActionData: { type: string; pageId?: any; title?: any } | null = actionData
     let loopCount = 0
     const MAX_LOOPS = 6
 
