@@ -1,7 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
   <rect width="32" height="32" rx="8" fill="#1a1a2e"/>
-  <path d="M8 22 L20 10 L24 14 L12 26 Z" fill="#f0c060" stroke="#f0c060" stroke-width="0.5"/>
-  <path d="M20 10 L22 8 L24 10 L24 14 Z" fill="#e07030"/>
-  <path d="M8 22 L10 26 L12 26 Z" fill="#c0a050"/>
-  <line x1="10" y1="24" x2="10.5" y2="25.5" stroke="#1a1a2e" stroke-width="1"/>
+  <!-- pencil body -->
+  <rect x="14" y="4" width="5" height="18" rx="1" fill="#f5c842" transform="rotate(45 16 16)"/>
+  <!-- eraser -->
+  <rect x="14" y="4" width="5" height="4" rx="1" fill="#f28b82" transform="rotate(45 16 16)"/>
+  <!-- tip -->
+  <polygon points="16,26 13,23 19,23" fill="#d4a04a"/>
+  <!-- tip point -->
+  <polygon points="16,29 14.5,26 17.5,26" fill="#2a2a2a"/>
 </svg>
