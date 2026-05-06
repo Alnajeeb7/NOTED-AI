@@ -8,6 +8,8 @@ import { Sidebar } from '@/components/sidebar/sidebar'
 import { AiPanel } from '@/components/ai-panel'
 import { SearchModal } from '@/components/search-modal'
 import { SettingsModal } from '@/components/settings-modal'
+import { Home, PanelLeft, Bot, Plus, Search } from 'lucide-react'
+import { cn } from '@/lib/utils'
 
 const SIDEBAR_MIN = 180
 const SIDEBAR_MAX = 420
@@ -27,14 +29,16 @@ export default function WorkspaceLayout({
   const router = useRouter()
   const supabase = createClient()
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
+  const [mobileAiOpen, setMobileAiOpen] = useState(false)
 
-  // Resizable widths
   const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT)
   const [aiWidth, setAiWidth] = useState(AI_DEFAULT)
   const resizingRef = useRef<'sidebar' | 'ai' | null>(null)
 
   const {
-    setWorkspace, setPages, setUser, setPagesLoading, sidebarOpen, aiOpen, searchOpen, _hydrated,
+    setWorkspace, setPages, setUser, setPagesLoading, sidebarOpen, aiOpen,
+    toggleAi, toggleSidebar, setSearchOpen, _hydrated,
   } = useAppStore()
 
   const loadData = useCallback(async () => {
@@ -61,7 +65,6 @@ export default function WorkspaceLayout({
 
   useEffect(() => { loadData() }, [loadData])
 
-  // Real-time sync
   useEffect(() => {
     const channel = supabase
       .channel('pages-changes')
@@ -72,16 +75,13 @@ export default function WorkspaceLayout({
     return () => { supabase.removeChannel(channel) }
   }, [workspaceId]) // eslint-disable-line
 
-  // ── Resize drag logic ───────────────────────────────────────────────────────
   useEffect(() => {
     const onMouseMove = (e: MouseEvent) => {
       if (resizingRef.current === 'sidebar') {
-        const newW = Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, e.clientX))
-        setSidebarWidth(newW)
+        setSidebarWidth(Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, e.clientX)))
       }
       if (resizingRef.current === 'ai') {
-        const newW = Math.max(AI_MIN, Math.min(AI_MAX, window.innerWidth - e.clientX))
-        setAiWidth(newW)
+        setAiWidth(Math.max(AI_MIN, Math.min(AI_MAX, window.innerWidth - e.clientX)))
       }
     }
     const onMouseUp = () => {
@@ -97,7 +97,6 @@ export default function WorkspaceLayout({
     }
   }, [])
 
-  // Keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === ',') { e.preventDefault(); setSettingsOpen(true) }
@@ -118,52 +117,149 @@ export default function WorkspaceLayout({
     document.body.style.userSelect = 'none'
   }
 
+  const createPage = async () => {
+    try {
+      const res = await fetch('/api/pages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workspace_id: workspaceId, title: 'Untitled', icon: null, parent_id: null }),
+      })
+      const newPage = await res.json()
+      router.push(`/workspace/${workspaceId}/page/${newPage.id}`)
+      setMobileSidebarOpen(false)
+    } catch { /* ignore */ }
+  }
+
   if (!_hydrated) {
-    return <div className="h-screen w-full bg-background flex items-center justify-center">
-      <div className="w-8 h-8 rounded-full border-2 border-foreground/10 border-t-foreground animate-spin" />
-    </div>
+    return (
+      <div className="h-screen w-full bg-background flex items-center justify-center">
+        <div className="w-8 h-8 rounded-full border-2 border-foreground/10 border-t-foreground animate-spin" />
+      </div>
+    )
   }
 
   return (
     <div className="flex h-screen overflow-hidden bg-background" suppressHydrationWarning>
-      {/* ── Left sidebar ── */}
+
+      {/* ── DESKTOP: Left sidebar ── */}
       {sidebarOpen && (
-        <Sidebar
-          workspaceId={workspaceId}
-          width={sidebarWidth}
-          onOpenSettings={() => setSettingsOpen(true)}
-        />
+        <>
+          <div className="hidden md:flex">
+            <Sidebar
+              workspaceId={workspaceId}
+              width={sidebarWidth}
+              onOpenSettings={() => setSettingsOpen(true)}
+            />
+          </div>
+          <div
+            onMouseDown={startSidebarResize}
+            className="hidden md:block w-1 shrink-0 cursor-col-resize hover:bg-blue-500/40 active:bg-blue-500/60 transition-colors relative"
+          >
+            <div className="absolute inset-y-0 -left-1 -right-1" />
+          </div>
+        </>
       )}
 
-      {/* ── Left resize handle ── */}
-      {sidebarOpen && (
-        <div
-          onMouseDown={startSidebarResize}
-          className="w-1 shrink-0 cursor-col-resize hover:bg-blue-500/40 active:bg-blue-500/60 transition-colors group relative"
-          title="Drag to resize sidebar"
-        >
-          <div className="absolute inset-y-0 -left-1 -right-1" /> {/* wider hit area */}
+      {/* ── MOBILE: Sidebar overlay ── */}
+      {mobileSidebarOpen && (
+        <div className="md:hidden fixed inset-0 z-50 flex">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={() => setMobileSidebarOpen(false)}
+          />
+          {/* Drawer */}
+          <div className="relative z-10 w-72 h-full">
+            <Sidebar
+              workspaceId={workspaceId}
+              width={288}
+              onOpenSettings={() => { setSettingsOpen(true); setMobileSidebarOpen(false) }}
+            />
+          </div>
         </div>
       )}
 
       {/* ── Main content ── */}
-      <main className="flex-1 overflow-y-auto min-w-0">
+      <main className="flex-1 overflow-y-auto min-w-0 pb-16 md:pb-0">
         {children}
       </main>
 
-      {/* ── Right resize handle ── */}
+      {/* ── DESKTOP: Right resize handle + AI panel ── */}
       {aiOpen && (
-        <div
-          onMouseDown={startAiResize}
-          className="w-1 shrink-0 cursor-col-resize hover:bg-blue-500/40 active:bg-blue-500/60 transition-colors relative"
-          title="Drag to resize AI panel"
-        >
-          <div className="absolute inset-y-0 -left-1 -right-1" />
+        <>
+          <div
+            onMouseDown={startAiResize}
+            className="hidden md:block w-1 shrink-0 cursor-col-resize hover:bg-blue-500/40 active:bg-blue-500/60 transition-colors relative"
+          >
+            <div className="absolute inset-y-0 -left-1 -right-1" />
+          </div>
+          <div className="hidden md:flex">
+            <AiPanel workspaceId={workspaceId} width={aiWidth} />
+          </div>
+        </>
+      )}
+
+      {/* ── MOBILE: AI panel overlay ── */}
+      {mobileAiOpen && (
+        <div className="md:hidden fixed inset-0 z-50 flex flex-col">
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={() => setMobileAiOpen(false)}
+          />
+          <div className="relative z-10 mt-auto h-[85vh] w-full rounded-t-2xl overflow-hidden">
+            <AiPanel workspaceId={workspaceId} width={window?.innerWidth || 390} />
+          </div>
         </div>
       )}
 
-      {/* ── Right AI panel ── */}
-      {aiOpen && <AiPanel workspaceId={workspaceId} width={aiWidth} />}
+      {/* ── MOBILE: Bottom nav bar ── */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-background border-t border-border flex items-center justify-around px-2 py-2 safe-area-pb">
+        <button
+          onClick={() => router.push(`/workspace/${workspaceId}`)}
+          className="flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+        >
+          <Home className="w-5 h-5" />
+          <span className="text-[10px]">Home</span>
+        </button>
+
+        <button
+          onClick={() => { setMobileSidebarOpen((v) => !v); setMobileAiOpen(false) }}
+          className={cn(
+            'flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl transition-colors',
+            mobileSidebarOpen ? 'text-foreground bg-accent' : 'text-muted-foreground hover:text-foreground hover:bg-accent'
+          )}
+        >
+          <PanelLeft className="w-5 h-5" />
+          <span className="text-[10px]">Pages</span>
+        </button>
+
+        <button
+          onClick={createPage}
+          className="flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl bg-foreground text-background transition-colors"
+        >
+          <Plus className="w-5 h-5" />
+          <span className="text-[10px]">New</span>
+        </button>
+
+        <button
+          onClick={() => setSearchOpen(true)}
+          className="flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+        >
+          <Search className="w-5 h-5" />
+          <span className="text-[10px]">Search</span>
+        </button>
+
+        <button
+          onClick={() => { setMobileAiOpen((v) => !v); setMobileSidebarOpen(false) }}
+          className={cn(
+            'flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-xl transition-colors',
+            mobileAiOpen ? 'text-foreground bg-accent' : 'text-muted-foreground hover:text-foreground hover:bg-accent'
+          )}
+        >
+          <Bot className="w-5 h-5" />
+          <span className="text-[10px]">AI</span>
+        </button>
+      </nav>
 
       {/* Global modals */}
       <SearchModal workspaceId={workspaceId} />
