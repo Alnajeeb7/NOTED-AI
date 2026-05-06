@@ -17,9 +17,11 @@ export const metadata: Metadata = {
   },
   description: 'Your AI-powered workspace for notes, docs, and more.',
   icons: {
-    icon: '/favicon.svg',
-    shortcut: '/favicon.svg',
-    apple: '/favicon.svg',
+    icon: [
+      { url: '/favicon-32x32.png', sizes: '32x32', type: 'image/png' },
+      { url: '/favicon-16x16.png', sizes: '16x16', type: 'image/png' },
+    ],
+    apple: '/apple-touch-icon.png',
   },
 }
 
@@ -38,8 +40,15 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning className={fraunces.variable}>
       <head>
-        <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+        <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+        <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+        <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
+        <link rel="manifest" href="/site.webmanifest" />
+
+        {/* fallback (important) */}
+        <link rel="icon" href="/favicon.ico" />
       </head>
+
       <body>
         <ThemeProvider
           attribute="class"
