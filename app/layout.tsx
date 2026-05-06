@@ -17,8 +17,10 @@ export const metadata: Metadata = {
   },
   description: 'Your AI-powered workspace for notes, docs, and more.',
   icons: {
-  icon: [{ url: '/favicon.svg', type: 'image/svg+xml' }],
-},
+    icon: '/icon.svg',
+    shortcut: '/icon.svg',
+    apple: '/icon.svg',
+  },
 }
 
 export const viewport: Viewport = {
@@ -35,6 +37,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning className={fraunces.variable}>
+      <head>
+        <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+      </head>
       <body>
         <ThemeProvider
           attribute="class"
