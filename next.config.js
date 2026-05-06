@@ -10,6 +10,13 @@ const nextConfig = {
   experimental: {
     serverComponentsExternalPackages: ['@blocknote/core'],
   },
+  async headers() {
+    return [
+      {
+        source: '/favicon.svg',
+        headers: [{ key: 'Content-Type', value: 'image/svg+xml' }],
+      },
+    ]
+  },
 }
-
 module.exports = nextConfig
