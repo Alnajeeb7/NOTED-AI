@@ -17,8 +17,8 @@ export const metadata: Metadata = {
   },
   description: 'Your AI-powered workspace for notes, docs, and more.',
   icons: {
-    icon: '/favicon.svg',
-  },
+  icon: [{ url: '/favicon.svg', type: 'image/svg+xml' }],
+},
 }
 
 export const viewport: Viewport = {
