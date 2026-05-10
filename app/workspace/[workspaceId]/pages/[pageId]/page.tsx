@@ -39,7 +39,6 @@ export default function PageView({
     if (page) setTitleValue(page.title)
   }, [page?.id]) // eslint-disable-line
 
-  // Manual save via Ctrl+S / Cmd+S
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
@@ -89,7 +88,6 @@ export default function PageView({
     (content: unknown) => {
       updatePage(pageId, { content: content as never })
       setSaveStatus('unsaved')
-      // Debounce: wait 1.2s after last change before saving
       if (contentTimerRef.current) clearTimeout(contentTimerRef.current)
       contentTimerRef.current = setTimeout(async () => {
         setSaveStatus('saving')
@@ -115,10 +113,9 @@ export default function PageView({
     router.push(`/workspace/${workspaceId}`)
   }
 
-  // BUG FIX: If pages are still loading from DB, show spinner instead of "Page not found"
-  // This prevents the false 404 that appeared when navigating to a newly created page
+  // BUG FIX: show spinner while pages loading OR store is empty (race condition on navigation)
   if (!page) {
-    if (pagesLoading) {
+    if (pagesLoading || pages.length === 0) {
       return (
         <div className="flex-1 flex items-center justify-center text-muted-foreground">
           <div className="w-6 h-6 rounded-full border-2 border-foreground/10 border-t-foreground animate-spin" />
@@ -134,7 +131,6 @@ export default function PageView({
 
   return (
     <div className="flex flex-col h-full">
-      {/* ── Toolbar ── */}
       <header className="flex items-center gap-1.5 px-4 py-2 border-b border-border shrink-0">
         <button
           onClick={toggleSidebar}
@@ -146,7 +142,6 @@ export default function PageView({
 
         <div className="flex-1" />
 
-        {/* Save status indicator */}
         <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs select-none">
           {saveStatus === 'saving' && (
             <>
@@ -239,10 +234,8 @@ export default function PageView({
         </DropdownMenu.Root>
       </header>
 
-      {/* ── Page content ── */}
       <div className="flex-1 overflow-y-auto">
         <div className="noted-editor">
-          {/* Icon */}
           <div className="mb-4">
             <button
               className="text-5xl hover:opacity-70 transition-opacity"
@@ -263,7 +256,6 @@ export default function PageView({
             </button>
           </div>
 
-          {/* Title */}
           <textarea
             id="page-title"
             className="page-title mb-6 resize-none overflow-hidden"
@@ -280,7 +272,6 @@ export default function PageView({
             }}
           />
 
-          {/* Editor */}
           <BlockNoteEditor
             initialContent={page.content as never}
             onChange={handleContentChange}
