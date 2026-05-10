@@ -243,7 +243,7 @@ export default function WorkspaceLayout({
             <div className="absolute inset-y-0 -left-1 -right-1" />
           </div>
           <div className="hidden md:flex">
-            <AiPanel workspaceId={workspaceId} width={aiWidth} />
+            <AiPanel workspaceId={workspaceId} width={window?.innerWidth || 390} onClose={() => setMobileAiOpen(false)} />
           </div>
         </>
       )}
