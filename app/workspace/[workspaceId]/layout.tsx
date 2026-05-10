@@ -172,7 +172,9 @@ export default function WorkspaceLayout({
         body: JSON.stringify({ workspace_id: workspaceId, title: 'Untitled', icon: null, parent_id: null }),
       })
       const newPage = await res.json()
-      // FIX: invalidate cache so new page is included in next fetch
+      if (!newPage?.id) return // guard: API failed
+      // BUG FIX: add page to store immediately so page view doesn't show "Page not found"
+      useAppStore.getState().addPage(newPage)
       clearPageCache(workspaceId)
       router.push(`/workspace/${workspaceId}/pages/${newPage.id}`)
       setMobileSidebarOpen(false)
