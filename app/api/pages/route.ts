@@ -55,8 +55,9 @@ export async function PATCH(req: NextRequest) {
   const { data: { session } } = await supabase.auth.getSession()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const body = await req.json()
-  const { id, ...updates } = body
+const id = req.nextUrl.searchParams.get('id')
+if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
+const updates = await req.json()
 
   const { data, error } = await supabase
     .from('pages')
