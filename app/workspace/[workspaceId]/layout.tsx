@@ -146,11 +146,17 @@ export default function WorkspaceLayout({
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === ',') { e.preventDefault(); setSettingsOpen(true) }
+      if (!e.metaKey && !e.ctrlKey) return
+      switch (e.key) {
+        case ',': e.preventDefault(); setSettingsOpen(true); break
+        case 'k': e.preventDefault(); setSearchOpen(true); break
+        case 'n': e.preventDefault(); createPage(); break
+        case '\\': e.preventDefault(); toggleSidebar(); break
+      }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [])
+  }, [createPage])
 
   const startSidebarResize = () => {
     resizingRef.current = 'sidebar'
