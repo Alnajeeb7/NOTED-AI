@@ -144,20 +144,6 @@ export default function WorkspaceLayout({
     }
   }, [])
 
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (!e.metaKey && !e.ctrlKey) return
-      switch (e.key) {
-        case ',': e.preventDefault(); setSettingsOpen(true); break
-        case 'k': e.preventDefault(); setSearchOpen(true); break
-        case 'n': e.preventDefault(); createPage(); break
-        case '\\': e.preventDefault(); toggleSidebar(); break
-      }
-    }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [createPage])
-
   const startSidebarResize = () => {
     resizingRef.current = 'sidebar'
     document.body.style.cursor = 'col-resize'
@@ -178,14 +164,27 @@ export default function WorkspaceLayout({
         body: JSON.stringify({ workspace_id: workspaceId, title: 'Untitled', icon: null, parent_id: null }),
       })
       const newPage = await res.json()
-      if (!newPage?.id) return // guard: API failed
-      // BUG FIX: add page to store immediately so page view doesn't show "Page not found"
+      if (!newPage?.id) return
       useAppStore.getState().addPage(newPage)
       clearPageCache(workspaceId)
       router.push(`/workspace/${workspaceId}/pages/${newPage.id}`)
       setMobileSidebarOpen(false)
     } catch { /* ignore */ }
   }
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (!e.metaKey && !e.ctrlKey) return
+      switch (e.key) {
+        case ',': e.preventDefault(); setSettingsOpen(true); break
+        case 'k': e.preventDefault(); setSearchOpen(true); break
+        case 'n': e.preventDefault(); createPage(); break
+        case '\\': e.preventDefault(); toggleSidebar(); break
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [createPage])
 
   if (!_hydrated) {
     return (
