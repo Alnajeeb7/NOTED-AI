@@ -157,7 +157,6 @@ export const useAppStore = create<AppState>()(
         state?.setHydrated(true)
       },
       partialize: (state) => ({
-        sidebarOpen: state.sidebarOpen,
         aiOpen: state.aiOpen,
         favorites: state.favorites,
         recentPages: state.recentPages,
