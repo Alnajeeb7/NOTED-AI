@@ -1,3 +1,6 @@
+// FIX: This route uses cookies (Supabase auth) so it cannot be statically rendered
+export const dynamic = 'force-dynamic'
+
 import { createServerClient } from '@/lib/supabase-server'
 import { createClient } from '@supabase/supabase-js'
 import { redirect } from 'next/navigation'
@@ -42,7 +45,6 @@ export default async function RootPage() {
     .single()
 
   if (wsError || !workspace) {
-    // Workspace creation failed — send to login with error
     redirect('/login?error=setup')
   }
 
