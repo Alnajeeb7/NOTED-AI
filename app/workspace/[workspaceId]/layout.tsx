@@ -10,6 +10,8 @@ import { SearchModal } from '@/components/search-modal'
 import { SettingsModal } from '@/components/settings-modal'
 import { Home, PanelLeft, Bot, Plus, Search } from 'lucide-react'
 import { cn } from '@/lib/utils'
+// FIX: import mobile styles for responsive layout
+import '@/styles/mobile.css'
 
 const SIDEBAR_MIN = 180
 const SIDEBAR_MAX = 420
@@ -17,6 +19,36 @@ const SIDEBAR_DEFAULT = 240
 const AI_MIN = 260
 const AI_MAX = 520
 const AI_DEFAULT = 320
+
+// FIX: session cache helpers to persist pages across client-side navigation
+const SESSION_KEY = (id: string) => `noted_pages_${id}`
+const CACHE_TTL = 60_000
+
+function readPageCache(workspaceId: string) {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = sessionStorage.getItem(SESSION_KEY(workspaceId))
+    if (!raw) return null
+    const { pages, fetchedAt } = JSON.parse(raw)
+    if (Date.now() - fetchedAt > CACHE_TTL) {
+      sessionStorage.removeItem(SESSION_KEY(workspaceId))
+      return null
+    }
+    return pages
+  } catch { return null }
+}
+
+function writePageCache(workspaceId: string, pages: unknown[]) {
+  if (typeof window === 'undefined') return
+  try {
+    sessionStorage.setItem(SESSION_KEY(workspaceId), JSON.stringify({ pages, fetchedAt: Date.now() }))
+  } catch { /* ignore quota errors */ }
+}
+
+function clearPageCache(workspaceId: string) {
+  if (typeof window === 'undefined') return
+  sessionStorage.removeItem(SESSION_KEY(workspaceId))
+}
 
 export default function WorkspaceLayout({
   children,
@@ -59,18 +91,33 @@ export default function WorkspaceLayout({
       .eq('workspace_id', workspaceId)
       .eq('is_archived', false)
       .order('updated_at', { ascending: false })
-    setPages(pages || [])
+
+    const pageData = pages || []
+    setPages(pageData)
+    // FIX: cache pages in sessionStorage so client-side navigation doesn't flash empty
+    if (pageData.length > 0) writePageCache(workspaceId, pageData)
     setPagesLoading(false)
   }, [workspaceId]) // eslint-disable-line
 
-  useEffect(() => { loadData() }, [loadData])
+  useEffect(() => {
+    // FIX: load from session cache immediately to prevent empty flash
+    const cached = readPageCache(workspaceId)
+    if (cached && cached.length > 0) {
+      setPages(cached)
+    }
+    loadData()
+  }, [loadData])
 
   useEffect(() => {
     const channel = supabase
       .channel('pages-changes')
       .on('postgres_changes',
         { event: '*', schema: 'public', table: 'pages', filter: `workspace_id=eq.${workspaceId}` },
-        () => loadData()
+        () => {
+          // FIX: invalidate cache on realtime updates so fresh data is fetched
+          clearPageCache(workspaceId)
+          loadData()
+        }
       ).subscribe()
     return () => { supabase.removeChannel(channel) }
   }, [workspaceId]) // eslint-disable-line
@@ -125,6 +172,8 @@ export default function WorkspaceLayout({
         body: JSON.stringify({ workspace_id: workspaceId, title: 'Untitled', icon: null, parent_id: null }),
       })
       const newPage = await res.json()
+      // FIX: invalidate cache so new page is included in next fetch
+      clearPageCache(workspaceId)
       router.push(`/workspace/${workspaceId}/page/${newPage.id}`)
       setMobileSidebarOpen(false)
     } catch { /* ignore */ }
@@ -163,12 +212,10 @@ export default function WorkspaceLayout({
       {/* ── MOBILE: Sidebar overlay ── */}
       {mobileSidebarOpen && (
         <div className="md:hidden fixed inset-0 z-50 flex">
-          {/* Backdrop */}
           <div
             className="absolute inset-0 bg-black/50"
             onClick={() => setMobileSidebarOpen(false)}
           />
-          {/* Drawer */}
           <div className="relative z-10 w-72 h-full">
             <Sidebar
               workspaceId={workspaceId}
