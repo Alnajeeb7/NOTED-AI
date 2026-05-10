@@ -174,7 +174,7 @@ export default function WorkspaceLayout({
       const newPage = await res.json()
       // FIX: invalidate cache so new page is included in next fetch
       clearPageCache(workspaceId)
-      router.push(`/workspace/${workspaceId}/page/${newPage.id}`)
+      router.push(`/workspace/${workspaceId}/pages/${newPage.id}`)
       setMobileSidebarOpen(false)
     } catch { /* ignore */ }
   }
