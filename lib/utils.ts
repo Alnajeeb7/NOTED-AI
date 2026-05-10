@@ -18,7 +18,7 @@ export function formatRelative(date: string | Date): string {
 }
 
 export function getPageUrl(workspaceId: string, pageId: string): string {
-  return `/workspace/${workspaceId}/page/${pageId}`
+  return `/workspace/${workspaceId}/pages/${pageId}`
 }
 
 export function truncate(str: string, length: number): string {
