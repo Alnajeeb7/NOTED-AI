@@ -6,7 +6,6 @@ import { getGroqClient, SYSTEM_PROMPT, AGENT_TOOLS, GROQ_MODELS, DEFAULT_MODEL }
 import type { GroqModelId } from '@/lib/groq'
 import type Groq from 'groq-sdk'
 
-// Service-role client — bypasses RLS so the AI can create/update/read freely
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -14,7 +13,6 @@ const supabaseAdmin = createClient(
 
 export async function POST(req: NextRequest) {
   try {
-    // Verify the user is authenticated
     const supabase = createRouteHandlerClient({ cookies })
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -24,11 +22,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
 
-    // Validate the model — fall back to default if unknown
     const validModelIds = GROQ_MODELS.map((m) => m.id)
     const model: GroqModelId = validModelIds.includes(requestedModel) ? requestedModel : DEFAULT_MODEL
 
-    // Get workspace pages for context (use admin to avoid RLS issues)
     const { data: pages } = await supabaseAdmin
       .from('pages')
       .select('id, title, icon, updated_at')
@@ -41,7 +37,6 @@ export async function POST(req: NextRequest) {
       ? pages.map((p) => `- ${p.icon || '📄'} "${p.title}" (id: ${p.id})`).join('\n')
       : 'No pages yet'
 
-    // Build Groq message history
     const groqMessages: Groq.Chat.ChatCompletionMessageParam[] = [
       {
         role: 'system',
@@ -67,11 +62,14 @@ IMPORTANT: When the user asks you to create, update, search, or list pages — A
       },
     ]
 
-    // Agentic loop — keeps running until no more tool calls
     const actionData: { type: string; pageId?: string; title?: string } | null = null
     let lastActionData: { type: string; pageId?: any; title?: any } | null = actionData
     let loopCount = 0
     const MAX_LOOPS = 6
+
+    // BUG FIX: check if model supports tool calling before sending tools
+    const modelConfig = GROQ_MODELS.find((m) => m.id === model)
+    const supportsTools = modelConfig?.supportsTools !== false
 
     while (loopCount < MAX_LOOPS) {
       loopCount++
@@ -80,10 +78,9 @@ IMPORTANT: When the user asks you to create, update, search, or list pages — A
       const response = await groq.chat.completions.create({
         model,
         messages: groqMessages,
-        tools: AGENT_TOOLS,
-        tool_choice: loopCount === 1 ? 'auto' : 'auto',
+        ...(supportsTools ? { tools: AGENT_TOOLS, tool_choice: 'auto' as const } : {}),
         max_tokens: 2048,
-        temperature: 0.3, // Lower temp = more deterministic tool use
+        temperature: 0.3,
       })
 
       const choice = response.choices[0]
@@ -91,7 +88,6 @@ IMPORTANT: When the user asks you to create, update, search, or list pages — A
 
       groqMessages.push(assistantMessage)
 
-      // No more tool calls — return final answer
       if (!assistantMessage.tool_calls || assistantMessage.tool_calls.length === 0) {
         return NextResponse.json({
           content: assistantMessage.content || 'Done! Let me know if you need anything else.',
@@ -99,7 +95,6 @@ IMPORTANT: When the user asks you to create, update, search, or list pages — A
         })
       }
 
-      // Execute each tool call
       for (const toolCall of assistantMessage.tool_calls) {
         const fnName = toolCall.function.name
         let args: Record<string, string> = {}
@@ -108,7 +103,6 @@ IMPORTANT: When the user asks you to create, update, search, or list pages — A
         let toolResult = ''
 
         switch (fnName) {
-          // ── Create page ────────────────────────────────────────────────────
           case 'create_page': {
             const blocks = args.content ? parseMarkdownToBlocks(args.content) : null
             const { data: newPage, error } = await supabaseAdmin
@@ -134,7 +128,6 @@ IMPORTANT: When the user asks you to create, update, search, or list pages — A
             break
           }
 
-          // ── Search pages ───────────────────────────────────────────────────
           case 'search_pages': {
             const { data: results } = await supabaseAdmin
               .from('pages')
@@ -153,7 +146,6 @@ IMPORTANT: When the user asks you to create, update, search, or list pages — A
             break
           }
 
-          // ── Get page content ───────────────────────────────────────────────
           case 'get_page_content': {
             const baseQ = supabaseAdmin
               .from('pages')
@@ -174,7 +166,6 @@ IMPORTANT: When the user asks you to create, update, search, or list pages — A
             break
           }
 
-          // ── Update page content ────────────────────────────────────────────
           case 'update_page_content': {
             const blocks = args.content ? parseMarkdownToBlocks(args.content) : null
             const { error } = await supabaseAdmin
@@ -191,7 +182,6 @@ IMPORTANT: When the user asks you to create, update, search, or list pages — A
             break
           }
 
-          // ── Update page title ──────────────────────────────────────────────
           case 'update_page_title': {
             const { error } = await supabaseAdmin
               .from('pages')
@@ -207,7 +197,6 @@ IMPORTANT: When the user asks you to create, update, search, or list pages — A
             break
           }
 
-          // ── List pages ─────────────────────────────────────────────────────
           case 'list_pages': {
             const allPages = pages || []
             toolResult = allPages.length === 0
@@ -235,7 +224,6 @@ IMPORTANT: When the user asks you to create, update, search, or list pages — A
   } catch (error: unknown) {
     console.error('AI API error:', error)
     const err = error as { message?: string; status?: number; error?: { type?: string } }
-    // Groq rate limit
     const msg = err.message || ''
     if (msg.includes('Rate limit') || msg.includes('rate_limit') || (err as { status?: number }).status === 429) {
       return NextResponse.json(
@@ -246,8 +234,6 @@ IMPORTANT: When the user asks you to create, update, search, or list pages — A
     return NextResponse.json({ error: msg || 'AI request failed' }, { status: 500 })
   }
 }
-
-// ── Helpers ────────────────────────────────────────────────────────────────────
 
 function parseMarkdownToBlocks(markdown: string) {
   const lines = markdown.split('\n').filter((l) => l.trim())
