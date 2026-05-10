@@ -70,7 +70,7 @@ export default function WorkspaceLayout({
 
   const {
     setWorkspace, setPages, setUser, setPagesLoading, sidebarOpen, aiOpen,
-    toggleAi, toggleSidebar, setSearchOpen, _hydrated,
+    toggleAi, toggleSidebar, setSearchOpen, _hydrated, setAiOpen,
   } = useAppStore()
 
   const loadData = useCallback(async () => {
@@ -242,8 +242,8 @@ export default function WorkspaceLayout({
           >
             <div className="absolute inset-y-0 -left-1 -right-1" />
           </div>
-          <div className="relative z-10 mt-auto h-[85vh] w-full rounded-t-2xl overflow-hidden">
-            <AiPanel workspaceId={workspaceId} width={window?.innerWidth || 390} onClose={() => setMobileAiOpen(false)} />
+          <div className="hidden md:flex">
+            <AiPanel workspaceId={workspaceId} width={aiWidth} />
           </div>
         </>
       )}
@@ -256,7 +256,7 @@ export default function WorkspaceLayout({
             onClick={() => setMobileAiOpen(false)}
           />
           <div className="relative z-10 mt-auto h-[85vh] w-full rounded-t-2xl overflow-hidden">
-            <AiPanel workspaceId={workspaceId} width={window?.innerWidth || 390} />
+            <AiPanel workspaceId={workspaceId} width={window?.innerWidth || 390} onClose={() => { setMobileAiOpen(false); setAiOpen(false) }} />
           </div>
         </div>
       )}
