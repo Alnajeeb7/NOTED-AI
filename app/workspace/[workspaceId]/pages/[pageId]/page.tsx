@@ -20,7 +20,7 @@ export default function PageView({
 }) {
   const { workspaceId, pageId } = params
   const router = useRouter()
-  const { pages, updatePage, removePage, favorites, toggleFavorite, toggleSidebar, setCurrentPageId } =
+  const { pages, updatePage, removePage, favorites, toggleFavorite, toggleSidebar, setCurrentPageId, pagesLoading } =
     useAppStore()
 
   const page = pages.find((p) => p.id === pageId)
@@ -115,7 +115,16 @@ export default function PageView({
     router.push(`/workspace/${workspaceId}`)
   }
 
+  // BUG FIX: If pages are still loading from DB, show spinner instead of "Page not found"
+  // This prevents the false 404 that appeared when navigating to a newly created page
   if (!page) {
+    if (pagesLoading) {
+      return (
+        <div className="flex-1 flex items-center justify-center text-muted-foreground">
+          <div className="w-6 h-6 rounded-full border-2 border-foreground/10 border-t-foreground animate-spin" />
+        </div>
+      )
+    }
     return (
       <div className="flex-1 flex items-center justify-center text-muted-foreground">
         <p>Page not found.</p>
