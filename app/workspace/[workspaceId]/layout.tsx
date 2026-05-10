@@ -144,6 +144,13 @@ export default function WorkspaceLayout({
     }
   }, [])
 
+  // FIX: sync store's toggleSidebar to mobile sidebar local state
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.innerWidth < 768) {
+      setMobileSidebarOpen(sidebarOpen)
+    }
+  }, [sidebarOpen])
+
   const startSidebarResize = () => {
     resizingRef.current = 'sidebar'
     document.body.style.cursor = 'col-resize'
