@@ -49,15 +49,16 @@ export async function POST(req: NextRequest) {
   return NextResponse.json(data)
 }
 
-// PATCH /api/pages - update page
+// PATCH /api/pages?id=xxx - update page
 export async function PATCH(req: NextRequest) {
   const supabase = createRouteHandlerClient({ cookies })
   const { data: { session } } = await supabase.auth.getSession()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-const id = req.nextUrl.searchParams.get('id')
-if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
-const updates = await req.json()
+  // BUG FIX: id comes from query param (?id=xxx), not request body
+  const id = req.nextUrl.searchParams.get('id')
+  if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 })
+  const updates = await req.json()
 
   const { data, error } = await supabase
     .from('pages')
