@@ -1,0 +1,102 @@
+/*
+ * mobile.css — Mobile-only fixes for Noted app
+ * 
+ * BUG FIX: Mobile layout issues including:
+ * - Bottom nav overlapping page content
+ * - Sidebar overlay z-index conflicts  
+ * - Poor responsiveness on small screens
+ *
+ * IMPORTANT: These styles only apply to mobile (max-width: 768px)
+ * Desktop styles are untouched.
+ */
+
+@media (max-width: 768px) {
+  /* Fix: Bottom nav overlaps editor content */
+  main {
+    padding-bottom: 72px !important;
+  }
+
+  /* Fix: Noted editor padding on mobile */
+  .noted-editor {
+    padding-left: 16px !important;
+    padding-right: 16px !important;
+    padding-top: 24px !important;
+    padding-bottom: 80px !important;
+  }
+
+  /* Fix: Page title too large on mobile */
+  .page-title {
+    font-size: 1.8rem !important;
+  }
+
+  /* Fix: Bottom nav safe area + alignment */
+  nav.fixed.bottom-0 {
+    padding-bottom: max(8px, env(safe-area-inset-bottom)) !important;
+  }
+
+  nav.fixed.bottom-0 button {
+    flex: 1;
+    min-width: 0;
+  }
+
+  /* Fix: Sidebar overlay backdrop should cover full screen */
+  .md\:hidden.fixed.inset-0.z-50 > div.absolute.inset-0 {
+    position: fixed !important;
+  }
+
+  /* Fix: AI panel bottom sheet sizing */
+  .mt-auto.h-\[85vh\] {
+    max-height: 85vh;
+    overflow: hidden;
+  }
+
+  /* Fix: Search modal on mobile */
+  .fixed.inset-0.z-50.flex.items-start {
+    padding-top: 5vh !important;
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+  }
+
+  /* Fix: Settings modal on mobile */
+  .fixed.inset-0.z-50.flex.items-center {
+    padding: 12px !important;
+    align-items: flex-end !important;
+  }
+
+  /* Fix: workspace home grid on mobile */
+  .grid.grid-cols-3 {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+
+  .grid.grid-cols-2 {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Fix: Stats pills wrap on small screens */
+  .flex.items-end.justify-between {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 8px !important;
+  }
+
+  /* Fix: Toolbar buttons spacing */
+  header.flex.items-center.gap-1\.5 {
+    gap: 2px !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .page-title {
+    font-size: 1.5rem !important;
+  }
+
+  .noted-editor {
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+  }
+
+  /* Stack keyboard shortcuts in 1 col */
+  .grid.grid-cols-2.gap-x-8 {
+    grid-template-columns: 1fr !important;
+  }
+}
