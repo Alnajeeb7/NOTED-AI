@@ -24,9 +24,10 @@ const TAG_STYLES: Record<string, string> = {
 interface AiPanelProps {
   workspaceId: string
   width?: number
+  onClose?: () => void
 }
 
-export function AiPanel({ workspaceId, width = 320 }: AiPanelProps) {
+export function AiPanel({ workspaceId, width = 320, onClose }: AiPanelProps) {
   const router = useRouter()
   const {
     aiMessages, addAiMessage, clearAiMessages, setAiOpen, currentPageId, setPages,
@@ -183,7 +184,7 @@ export function AiPanel({ workspaceId, width = 320 }: AiPanelProps) {
           <RotateCcw className="w-3.5 h-3.5" />
         </button>
         <button
-          onClick={() => setAiOpen(false)}
+          onClick={() => { setAiOpen(false); onClose?.() }}
           className="p-1.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
         >
           <X className="w-4 h-4" />
