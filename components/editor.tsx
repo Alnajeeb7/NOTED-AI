@@ -160,7 +160,7 @@ const insertVideoItem = (editor: typeof schema.BlockNoteEditor) => ({
   },
   aliases: ['video', 'mp4', 'webm', 'film', 'media', 'upload'],
   group: 'Media',
-  icon: <span style={{ fontSize: 16 }}>🎬</span>,
+  icon: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="7" width="20" height="15" rx="2"/><polyline points="17 2 12 7 7 2"/></svg>,
 })
 
 const insertYouTubeItem = (editor: typeof schema.BlockNoteEditor) => ({
@@ -174,7 +174,7 @@ const insertYouTubeItem = (editor: typeof schema.BlockNoteEditor) => ({
   },
   aliases: ['youtube', 'yt', 'embed', 'video'],
   group: 'Media',
-  icon: <span style={{ fontSize: 16 }}>▶️</span>,
+  icon: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>,
 })
 
 // ─── Component ────────────────────────────────────────────────────────────────
