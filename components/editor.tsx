@@ -1,18 +1,14 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useCreateBlockNote } from '@blocknote/react'
 import { BlockNoteView } from '@blocknote/mantine'
 import '@blocknote/mantine/style.css'
-import {
-  BlockNoteSchema,
-  defaultBlockSpecs,
-  insertOrUpdateBlock,
-} from '@blocknote/core'
+import { BlockNoteSchema, defaultBlockSpecs, insertOrUpdateBlock } from '@blocknote/core'
 import { createReactBlockSpec } from '@blocknote/react'
 import type { Block } from '@blocknote/core'
 
-// ─── YouTube custom block ─────────────────────────────────────────────────────
+// ─── YouTube block ────────────────────────────────────────────────────────────
 
 function extractYouTubeId(url: string): string | null {
   const patterns = [
@@ -29,21 +25,15 @@ function extractYouTubeId(url: string): string | null {
 }
 
 const YouTubeBlock = createReactBlockSpec(
-  {
-    type: 'youtube' as const,
-    propSchema: { url: { default: '' } },
-    content: 'none',
-  },
+  { type: 'youtube' as const, propSchema: { url: { default: '' } }, content: 'none' },
   {
     render: ({ block }) => {
       const videoId = extractYouTubeId(block.props.url)
-      if (!videoId) {
-        return (
-          <div style={{ padding: '8px 12px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 6, color: '#dc2626', fontSize: 13 }}>
-            Invalid YouTube URL
-          </div>
-        )
-      }
+      if (!videoId) return (
+        <div style={{ padding: '8px 12px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 6, color: '#dc2626', fontSize: 13 }}>
+          Invalid YouTube URL
+        </div>
+      )
       return (
         <div contentEditable={false} style={{ width: '100%', margin: '4px 0' }}>
           <div style={{ position: 'relative', paddingBottom: '56.25%', height: 0, overflow: 'hidden', borderRadius: 8, background: '#000' }}>
@@ -61,21 +51,86 @@ const YouTubeBlock = createReactBlockSpec(
         </div>
       )
     },
-    toExternalHTML: ({ block }) => {
-      const videoId = extractYouTubeId(block.props.url)
-      if (!videoId) return <div />
-      return <div><a href={block.props.url}>{block.props.url}</a></div>
+    toExternalHTML: ({ block }) => <div><a href={block.props.url}>{block.props.url}</a></div>,
+  }
+)
+
+// ─── Video block ──────────────────────────────────────────────────────────────
+
+const VideoBlock = createReactBlockSpec(
+  { type: 'video' as const, propSchema: { url: { default: '' }, name: { default: '' } }, content: 'none' },
+  {
+    render: ({ block }) => {
+      const [uploading, setUploading] = useState(false)
+
+      if (!block.props.url) {
+        return (
+          <div contentEditable={false}>
+            <label style={{
+              display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer',
+              padding: '10px 14px', borderRadius: 8, border: '2px dashed #d1d5db',
+              background: '#f9fafb', fontSize: 13, color: '#6b7280',
+              opacity: uploading ? 0.6 : 1,
+            }}>
+              <span>🎬</span>
+              <span>{uploading ? 'Uploading…' : 'Click to upload video (mp4, webm — max 100 MB)'}</span>
+              <input
+                type="file"
+                accept="video/mp4,video/webm,video/ogg,video/quicktime"
+                style={{ display: 'none' }}
+                disabled={uploading}
+                onChange={async (e) => {
+                  const file = e.target.files?.[0]
+                  if (!file) return
+                  setUploading(true)
+                  try {
+                    const fd = new FormData()
+                    fd.append('file', file)
+                    const res = await fetch('/api/upload', { method: 'POST', body: fd })
+                    if (!res.ok) throw new Error('Upload failed')
+                    const { url } = await res.json()
+                    // Update block props
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    ;(block as any).props.url = url
+                    ;(block as any).props.name = file.name
+                    // Force re-render by dispatching a small editor update
+                    window.dispatchEvent(new CustomEvent('video-uploaded', { detail: { url, name: file.name, blockId: block.id } }))
+                  } catch {
+                    alert('Video upload failed. Try again.')
+                  } finally {
+                    setUploading(false)
+                  }
+                }}
+              />
+            </label>
+          </div>
+        )
+      }
+
+      return (
+        <div contentEditable={false} style={{ width: '100%', margin: '4px 0' }}>
+          <video
+            controls
+            style={{ width: '100%', borderRadius: 8, maxHeight: 480, background: '#000' }}
+            src={block.props.url}
+          />
+          {block.props.name && (
+            <p style={{ fontSize: 11, color: '#6b7280', marginTop: 4 }}>{block.props.name}</p>
+          )}
+        </div>
+      )
     },
+    toExternalHTML: ({ block }) => <div><a href={block.props.url}>{block.props.name || block.props.url}</a></div>,
   }
 )
 
 // ─── Schema ───────────────────────────────────────────────────────────────────
 
 const schema = BlockNoteSchema.create({
-  blockSpecs: { ...defaultBlockSpecs, youtube: YouTubeBlock },
+  blockSpecs: { ...defaultBlockSpecs, youtube: YouTubeBlock, video: VideoBlock },
 })
 
-// ─── Upload handler ───────────────────────────────────────────────────────────
+// ─── Upload handler (images) ──────────────────────────────────────────────────
 
 async function uploadToSupabase(file: File): Promise<string> {
   const formData = new FormData()
@@ -125,6 +180,23 @@ export default function Editor({ initialContent, onChange }: EditorProps) {
     }
     window.addEventListener('paste', handlePaste)
     return () => window.removeEventListener('paste', handlePaste)
+  }, [editor])
+
+  // Listen for video uploads to trigger content save
+  useEffect(() => {
+    if (!editor) return
+    const handleVideoUploaded = (e: Event) => {
+      const { url, name, blockId } = (e as CustomEvent).detail
+      // Update the block props via editor
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        editor.updateBlock(blockId, { type: 'video', props: { url, name } } as any)
+      } catch {
+        // block may have moved, content will still save on next change
+      }
+    }
+    window.addEventListener('video-uploaded', handleVideoUploaded)
+    return () => window.removeEventListener('video-uploaded', handleVideoUploaded)
   }, [editor])
 
   useEffect(() => {
