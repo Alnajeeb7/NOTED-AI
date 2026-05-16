@@ -116,50 +116,6 @@
     }
   }
 
-  /* Slash menu - dark, always visible above content */
-  .bn-suggestion-menu {
-    position: fixed !important;
-    z-index: 9999 !important;
-    background-color: #1c1c1c !important;
-    border: 1px solid #333 !important;
-    border-radius: 8px !important;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.5) !important;
-    max-height: 400px !important;
-    overflow-y: auto !important;
-  }
-
-  .bn-suggestion-menu-item {
-    color: #e5e5e5 !important;
-    border-radius: 6px !important;
-  }
-
-  .bn-suggestion-menu-item:hover,
-  .bn-suggestion-menu-item[data-selected="true"] {
-    background-color: #2e2e2e !important;
-  }
-
-  .bn-suggestion-menu-item-title {
-    color: #ffffff !important;
-    font-weight: 500 !important;
-  }
-
-  .bn-suggestion-menu-item-subtitle {
-    color: #aaaaaa !important;
-  }
-
-  .bn-suggestion-menu-label {
-    color: #666 !important;
-    font-size: 11px !important;
-    letter-spacing: 0.06em !important;
-    text-transform: uppercase !important;
-  }
-
-  .bn-suggestion-menu-item-badge {
-    background-color: #2a2a2a !important;
-    color: #888 !important;
-    border: 1px solid #444 !important;
-  }
-
   /* AI Agent streaming text */
   .ai-streaming::after {
     content: '▋';
@@ -291,4 +247,42 @@
 
 .page-title::placeholder {
   color: hsl(var(--muted-foreground) / 0.5);
+}
+
+/* ── Slash menu dark theme ── */
+[data-floating-ui-focusable] {
+  background-color: #1c1c1c !important;
+  border: 1px solid #333 !important;
+  border-radius: 8px !important;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.6) !important;
+  color: #e5e5e5 !important;
+}
+
+[data-floating-ui-focusable] * {
+  color: inherit !important;
+}
+
+[data-floating-ui-focusable] [class*="suggestionMenuItem"],
+[data-floating-ui-focusable] [class*="SuggestionMenuItem"] {
+  border-radius: 6px !important;
+}
+
+[data-floating-ui-focusable] [class*="suggestionMenuItem"]:hover,
+[data-floating-ui-focusable] [class*="suggestionMenuItem"][data-selected="true"],
+[data-floating-ui-focusable] [class*="mantine-"][class*="selected"],
+[data-floating-ui-focusable] [class*="mantine-"]:hover {
+  background-color: #2e2e2e !important;
+}
+
+[data-floating-ui-focusable] [class*="label"],
+[data-floating-ui-focusable] [class*="Label"] {
+  color: #666 !important;
+}
+
+[data-floating-ui-focusable] [class*="badge"],
+[data-floating-ui-focusable] [class*="Badge"],
+[data-floating-ui-focusable] kbd {
+  background-color: #2a2a2a !important;
+  border-color: #444 !important;
+  color: #888 !important;
 }
