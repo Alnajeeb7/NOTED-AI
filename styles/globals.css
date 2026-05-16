@@ -297,3 +297,37 @@
 [data-floating-ui-focusable] [style*="background-color"]:not([data-floating-ui-focusable]) {
   background-color: unset !important;
 }
+
+/* Color picker outer container fix */
+[data-floating-ui-focusable] {
+  background-color: #1c1c1c !important;
+  border: 1px solid #333 !important;
+  border-radius: 8px !important;
+}
+
+/* Formatting toolbar - dark */
+[class*="formattingToolbar"],
+[class*="FormattingToolbar"],
+.bn-toolbar,
+[data-radix-popper-content-wrapper] > div,
+[class*="mantine-"][class*="Toolbar"] {
+  background-color: #1c1c1c !important;
+  border: 1px solid #333 !important;
+  border-radius: 8px !important;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.5) !important;
+  color: #e5e5e5 !important;
+}
+
+[class*="formattingToolbar"] button,
+[class*="FormattingToolbar"] button,
+.bn-toolbar button,
+[data-radix-popper-content-wrapper] button {
+  color: #e5e5e5 !important;
+  background-color: transparent !important;
+}
+
+[class*="formattingToolbar"] button:hover,
+.bn-toolbar button:hover,
+[data-radix-popper-content-wrapper] button:hover {
+  background-color: #2e2e2e !important;
+}
