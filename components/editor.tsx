@@ -4,8 +4,13 @@ import { useEffect, useRef, useState } from 'react'
 import { useCreateBlockNote } from '@blocknote/react'
 import { BlockNoteView } from '@blocknote/mantine'
 import '@blocknote/mantine/style.css'
-import { BlockNoteSchema, defaultBlockSpecs, insertOrUpdateBlock } from '@blocknote/core'
-import { createReactBlockSpec } from '@blocknote/react'
+import {
+  BlockNoteSchema,
+  defaultBlockSpecs,
+  insertOrUpdateBlock,
+  defaultSlashMenuItems,
+} from '@blocknote/core'
+import { createReactBlockSpec, SuggestionMenuController, getDefaultReactSlashMenuItems } from '@blocknote/react'
 import type { Block } from '@blocknote/core'
 
 // ─── YouTube block ────────────────────────────────────────────────────────────
@@ -67,12 +72,12 @@ const VideoBlock = createReactBlockSpec(
         return (
           <div contentEditable={false}>
             <label style={{
-              display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer',
-              padding: '10px 14px', borderRadius: 8, border: '2px dashed #d1d5db',
-              background: '#f9fafb', fontSize: 13, color: '#6b7280',
-              opacity: uploading ? 0.6 : 1,
+              display: 'flex', alignItems: 'center', gap: 8, cursor: uploading ? 'not-allowed' : 'pointer',
+              padding: '12px 16px', borderRadius: 8, border: '1.5px dashed #d1d5db',
+              background: '#fafafa', fontSize: 13, color: '#6b7280',
+              opacity: uploading ? 0.6 : 1, transition: 'border-color 0.2s',
             }}>
-              <span>🎬</span>
+              <span style={{ fontSize: 18 }}>🎬</span>
               <span>{uploading ? 'Uploading…' : 'Click to upload video (mp4, webm — max 100 MB)'}</span>
               <input
                 type="file"
@@ -89,11 +94,6 @@ const VideoBlock = createReactBlockSpec(
                     const res = await fetch('/api/upload', { method: 'POST', body: fd })
                     if (!res.ok) throw new Error('Upload failed')
                     const { url } = await res.json()
-                    // Update block props
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    ;(block as any).props.url = url
-                    ;(block as any).props.name = file.name
-                    // Force re-render by dispatching a small editor update
                     window.dispatchEvent(new CustomEvent('video-uploaded', { detail: { url, name: file.name, blockId: block.id } }))
                   } catch {
                     alert('Video upload failed. Try again.')
@@ -109,14 +109,8 @@ const VideoBlock = createReactBlockSpec(
 
       return (
         <div contentEditable={false} style={{ width: '100%', margin: '4px 0' }}>
-          <video
-            controls
-            style={{ width: '100%', borderRadius: 8, maxHeight: 480, background: '#000' }}
-            src={block.props.url}
-          />
-          {block.props.name && (
-            <p style={{ fontSize: 11, color: '#6b7280', marginTop: 4 }}>{block.props.name}</p>
-          )}
+          <video controls style={{ width: '100%', borderRadius: 8, maxHeight: 480, background: '#000' }} src={block.props.url} />
+          {block.props.name && <p style={{ fontSize: 11, color: '#6b7280', marginTop: 4 }}>{block.props.name}</p>}
         </div>
       )
     },
@@ -128,6 +122,34 @@ const VideoBlock = createReactBlockSpec(
 
 const schema = BlockNoteSchema.create({
   blockSpecs: { ...defaultBlockSpecs, youtube: YouTubeBlock, video: VideoBlock },
+})
+
+// ─── Slash menu items ─────────────────────────────────────────────────────────
+
+const insertVideo = (editor: typeof schema.BlockNoteEditor) => ({
+  title: 'Video',
+  subtext: 'Insert a video file',
+  onItemClick: () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    insertOrUpdateBlock(editor as any, { type: 'video', props: { url: '', name: '' } } as any)
+  },
+  aliases: ['video', 'mp4', 'film', 'media'],
+  group: 'Media',
+  icon: <span style={{ fontSize: 18 }}>🎬</span>,
+})
+
+const insertYouTube = (editor: typeof schema.BlockNoteEditor) => ({
+  title: 'YouTube',
+  subtext: 'Embed a YouTube video',
+  onItemClick: () => {
+    const url = prompt('Paste YouTube URL:')
+    if (!url) return
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    insertOrUpdateBlock(editor as any, { type: 'youtube', props: { url } } as any)
+  },
+  aliases: ['youtube', 'yt', 'embed'],
+  group: 'Media',
+  icon: <span style={{ fontSize: 18 }}>▶️</span>,
 })
 
 // ─── Upload handler (images) ──────────────────────────────────────────────────
@@ -167,7 +189,6 @@ export default function Editor({ initialContent, onChange }: EditorProps) {
   const changeRef = useRef(onChange)
   changeRef.current = onChange
 
-  // Auto-embed YouTube on paste
   useEffect(() => {
     if (!editor) return
     const handlePaste = (e: ClipboardEvent) => {
@@ -175,25 +196,20 @@ export default function Editor({ initialContent, onChange }: EditorProps) {
       if (!text || !isYouTubeUrl(text)) return
       e.preventDefault()
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const block = { type: 'youtube', props: { url: text } } as any
-      insertOrUpdateBlock(editor as any, block)
+      insertOrUpdateBlock(editor as any, { type: 'youtube', props: { url: text } } as any)
     }
     window.addEventListener('paste', handlePaste)
     return () => window.removeEventListener('paste', handlePaste)
   }, [editor])
 
-  // Listen for video uploads to trigger content save
   useEffect(() => {
     if (!editor) return
     const handleVideoUploaded = (e: Event) => {
       const { url, name, blockId } = (e as CustomEvent).detail
-      // Update the block props via editor
       try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         editor.updateBlock(blockId, { type: 'video', props: { url, name } } as any)
-      } catch {
-        // block may have moved, content will still save on next change
-      }
+      } catch { /* ignore */ }
     }
     window.addEventListener('video-uploaded', handleVideoUploaded)
     return () => window.removeEventListener('video-uploaded', handleVideoUploaded)
@@ -209,7 +225,19 @@ export default function Editor({ initialContent, onChange }: EditorProps) {
 
   return (
     <div id="bn-editor-focus" tabIndex={-1}>
-      <BlockNoteView editor={editor} theme="light" />
+      <BlockNoteView editor={editor} theme="light" slashMenu={false}>
+        <SuggestionMenuController
+          triggerCharacter="/"
+          getItems={async (query) => {
+            const defaults = getDefaultReactSlashMenuItems(editor)
+            const custom = [insertVideo(editor), insertYouTube(editor)]
+            return [...defaults, ...custom].filter((item) =>
+              item.title.toLowerCase().includes(query.toLowerCase()) ||
+              item.aliases?.some((a) => a.includes(query.toLowerCase()))
+            )
+          }}
+        />
+      </BlockNoteView>
     </div>
   )
 }
