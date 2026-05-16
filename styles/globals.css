@@ -116,6 +116,12 @@
     }
   }
 
+  /* Slash menu positioning fix */
+  .bn-suggestion-menu {
+    position: fixed !important;
+    z-index: 9999 !important;
+  }
+
   /* AI Agent streaming text */
   .ai-streaming::after {
     content: '▋';
