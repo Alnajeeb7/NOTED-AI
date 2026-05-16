@@ -249,58 +249,32 @@
   color: hsl(var(--muted-foreground) / 0.5);
 }
 
-/* BlockNote dark popups - slash menu + formatting toolbar + color picker */
-.bn-suggestion-menu,
-.bn-formatting-toolbar,
-.bn-color-picker {
+/* Slash menu - black */
+.bn-suggestion-menu {
   background-color: #1c1c1c !important;
-  border: 1px solid #2e2e2e !important;
+  border: 1px solid #333 !important;
   border-radius: 8px !important;
   box-shadow: 0 8px 24px rgba(0,0,0,0.6) !important;
   color: #e5e5e5 !important;
-}
-
-/* Item rows */
-.bn-suggestion-menu-item,
-.bn-formatting-toolbar button,
-.bn-color-picker button {
-  color: #e5e5e5 !important;
-  background-color: transparent !important;
-  border-radius: 6px !important;
-}
-
-.bn-suggestion-menu-item:hover,
-.bn-suggestion-menu-item[data-selected="true"],
-.bn-formatting-toolbar button:hover,
-.bn-color-picker button:hover {
-  background-color: #2a2a2a !important;
-}
-
-/* Item title & subtitle */
-.bn-suggestion-menu-item-title { color: #ffffff !important; }
-.bn-suggestion-menu-item-subtitle { color: #999 !important; }
-
-/* Section labels */
-.bn-suggestion-menu-label { color: #555 !important; text-transform: uppercase; font-size: 11px; }
-
-/* Keyboard badges */
-.bn-suggestion-menu-item-badge {
-  background-color: #252525 !important;
-  border: 1px solid #3a3a3a !important;
-  color: #777 !important;
-}
-
-/* Icon boxes */
-.bn-suggestion-menu-item-icon {
-  background-color: #2a2a2a !important;
-  border: 1px solid #3a3a3a !important;
-  color: #e5e5e5 !important;
-}
-
-/* Slash menu always stays in viewport */
-.bn-suggestion-menu {
   position: fixed !important;
   z-index: 9999 !important;
   max-height: 420px !important;
   overflow-y: auto !important;
+}
+
+.bn-suggestion-menu * {
+  color: #e5e5e5 !important;
+}
+
+.bn-suggestion-menu [class*="item"]:hover,
+.bn-suggestion-menu [class*="item"][data-selected="true"] {
+  background-color: #2a2a2a !important;
+}
+
+/* Color picker - black */
+.bn-color-picker,
+.bn-color-picker * {
+  background-color: #1c1c1c !important;
+  color: #e5e5e5 !important;
+  border-color: #333 !important;
 }
