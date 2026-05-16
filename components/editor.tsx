@@ -120,11 +120,8 @@ export default function Editor({ initialContent, onChange }: EditorProps) {
       if (!text || !isYouTubeUrl(text)) return
       e.preventDefault()
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      // @ts-ignore
-      insertOrUpdateBlock(editor as any, {
-        type: 'youtube',
-        props: { url: text },
-      })
+      const block = { type: 'youtube', props: { url: text } } as any
+      insertOrUpdateBlock(editor as any, block)
     }
     window.addEventListener('paste', handlePaste)
     return () => window.removeEventListener('paste', handlePaste)
