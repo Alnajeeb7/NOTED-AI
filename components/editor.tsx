@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { useCreateBlockNote } from '@blocknote/react'
 import { BlockNoteView } from '@blocknote/mantine'
 import '@blocknote/mantine/style.css'
@@ -233,6 +233,30 @@ export default function Editor({ initialContent, onChange }: EditorProps) {
     return () => unsubscribe?.()
   }, [editor])
 
+  // Draggable slash menu state
+  const [menuPos, setMenuPos] = useState({ x: 0, y: 0 })
+  const [menuVisible, setMenuVisible] = useState(false)
+  const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null)
+
+  const onDragStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    dragRef.current = { startX: e.clientX, startY: e.clientY, origX: menuPos.x, origY: menuPos.y }
+    const onMove = (me: MouseEvent) => {
+      if (!dragRef.current) return
+      setMenuPos({
+        x: dragRef.current.origX + me.clientX - dragRef.current.startX,
+        y: dragRef.current.origY + me.clientY - dragRef.current.startY,
+      })
+    }
+    const onUp = () => {
+      dragRef.current = null
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }, [menuPos])
+
   return (
     <div id="bn-editor-focus" tabIndex={-1}>
       <BlockNoteView editor={editor} theme="light" slashMenu={false}>
@@ -248,6 +272,24 @@ export default function Editor({ initialContent, onChange }: EditorProps) {
               query
             )
           }
+          suggestionMenuComponent={(props) => (
+            <div
+              style={{
+                position: 'fixed',
+                left: menuPos.x || undefined,
+                top: menuPos.y || undefined,
+                zIndex: 9999,
+                cursor: 'grab',
+                userSelect: 'none',
+              }}
+              onMouseDown={onDragStart}
+            >
+              <div onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} style={{ cursor: 'default' }}>
+                {/* @ts-ignore */}
+                {props.children}
+              </div>
+            </div>
+          )}
         />
       </BlockNoteView>
     </div>
