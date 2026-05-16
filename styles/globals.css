@@ -116,10 +116,18 @@
     }
   }
 
-  /* Slash menu positioning fix */
+  /* Slash menu positioning + style reset */
   .bn-suggestion-menu {
     position: fixed !important;
     z-index: 9999 !important;
+    box-shadow: none !important;
+    border: 1px solid hsl(var(--border)) !important;
+    border-radius: 8px !important;
+    background: hsl(var(--background)) !important;
+  }
+
+  .bn-suggestion-menu-item {
+    box-shadow: none !important;
   }
 
   /* AI Agent streaming text */
