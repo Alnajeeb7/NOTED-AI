@@ -7,10 +7,14 @@ import '@blocknote/mantine/style.css'
 import {
   BlockNoteSchema,
   defaultBlockSpecs,
+  filterSuggestionItems,
   insertOrUpdateBlock,
-  defaultSlashMenuItems,
 } from '@blocknote/core'
-import { createReactBlockSpec, SuggestionMenuController, getDefaultReactSlashMenuItems } from '@blocknote/react'
+import {
+  createReactBlockSpec,
+  getDefaultReactSlashMenuItems,
+  SuggestionMenuController,
+} from '@blocknote/react'
 import type { Block } from '@blocknote/core'
 
 // ─── YouTube block ────────────────────────────────────────────────────────────
@@ -72,10 +76,11 @@ const VideoBlock = createReactBlockSpec(
         return (
           <div contentEditable={false}>
             <label style={{
-              display: 'flex', alignItems: 'center', gap: 8, cursor: uploading ? 'not-allowed' : 'pointer',
-              padding: '12px 16px', borderRadius: 8, border: '1.5px dashed #d1d5db',
-              background: '#fafafa', fontSize: 13, color: '#6b7280',
-              opacity: uploading ? 0.6 : 1, transition: 'border-color 0.2s',
+              display: 'flex', alignItems: 'center', gap: 8,
+              cursor: uploading ? 'not-allowed' : 'pointer',
+              padding: '12px 16px', borderRadius: 8,
+              border: '1.5px dashed #d1d5db', background: '#fafafa',
+              fontSize: 13, color: '#6b7280', opacity: uploading ? 0.6 : 1,
             }}>
               <span style={{ fontSize: 18 }}>🎬</span>
               <span>{uploading ? 'Uploading…' : 'Click to upload video (mp4, webm — max 100 MB)'}</span>
@@ -94,7 +99,9 @@ const VideoBlock = createReactBlockSpec(
                     const res = await fetch('/api/upload', { method: 'POST', body: fd })
                     if (!res.ok) throw new Error('Upload failed')
                     const { url } = await res.json()
-                    window.dispatchEvent(new CustomEvent('video-uploaded', { detail: { url, name: file.name, blockId: block.id } }))
+                    window.dispatchEvent(new CustomEvent('video-uploaded', {
+                      detail: { url, name: file.name, blockId: block.id }
+                    }))
                   } catch {
                     alert('Video upload failed. Try again.')
                   } finally {
@@ -124,34 +131,6 @@ const schema = BlockNoteSchema.create({
   blockSpecs: { ...defaultBlockSpecs, youtube: YouTubeBlock, video: VideoBlock },
 })
 
-// ─── Slash menu items ─────────────────────────────────────────────────────────
-
-const insertVideo = (editor: typeof schema.BlockNoteEditor) => ({
-  title: 'Video',
-  subtext: 'Insert a video file',
-  onItemClick: () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    insertOrUpdateBlock(editor as any, { type: 'video', props: { url: '', name: '' } } as any)
-  },
-  aliases: ['video', 'mp4', 'film', 'media'],
-  group: 'Media',
-  icon: <span style={{ fontSize: 18 }}>🎬</span>,
-})
-
-const insertYouTube = (editor: typeof schema.BlockNoteEditor) => ({
-  title: 'YouTube',
-  subtext: 'Embed a YouTube video',
-  onItemClick: () => {
-    const url = prompt('Paste YouTube URL:')
-    if (!url) return
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    insertOrUpdateBlock(editor as any, { type: 'youtube', props: { url } } as any)
-  },
-  aliases: ['youtube', 'yt', 'embed'],
-  group: 'Media',
-  icon: <span style={{ fontSize: 18 }}>▶️</span>,
-})
-
 // ─── Upload handler (images) ──────────────────────────────────────────────────
 
 async function uploadToSupabase(file: File): Promise<string> {
@@ -169,6 +148,34 @@ async function uploadToSupabase(file: File): Promise<string> {
 function isYouTubeUrl(text: string): boolean {
   return /(?:youtube\.com\/watch|youtu\.be\/|youtube\.com\/shorts\/)/.test(text)
 }
+
+// ─── Slash menu items ─────────────────────────────────────────────────────────
+
+const insertVideoItem = (editor: typeof schema.BlockNoteEditor) => ({
+  title: 'Video',
+  subtext: 'Insert a video file',
+  onItemClick: () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    insertOrUpdateBlock(editor as any, { type: 'video', props: { url: '', name: '' } } as any)
+  },
+  aliases: ['video', 'mp4', 'webm', 'film', 'media', 'upload'],
+  group: 'Media',
+  icon: <span style={{ fontSize: 16 }}>🎬</span>,
+})
+
+const insertYouTubeItem = (editor: typeof schema.BlockNoteEditor) => ({
+  title: 'YouTube',
+  subtext: 'Embed a YouTube video',
+  onItemClick: () => {
+    const url = prompt('Paste YouTube URL:')
+    if (!url) return
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    insertOrUpdateBlock(editor as any, { type: 'youtube', props: { url } } as any)
+  },
+  aliases: ['youtube', 'yt', 'embed', 'video'],
+  group: 'Media',
+  icon: <span style={{ fontSize: 16 }}>▶️</span>,
+})
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -189,6 +196,7 @@ export default function Editor({ initialContent, onChange }: EditorProps) {
   const changeRef = useRef(onChange)
   changeRef.current = onChange
 
+  // Auto-embed YouTube on paste
   useEffect(() => {
     if (!editor) return
     const handlePaste = (e: ClipboardEvent) => {
@@ -196,12 +204,14 @@ export default function Editor({ initialContent, onChange }: EditorProps) {
       if (!text || !isYouTubeUrl(text)) return
       e.preventDefault()
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      insertOrUpdateBlock(editor as any, { type: 'youtube', props: { url: text } } as any)
+      const block = { type: 'youtube', props: { url: text } } as any
+      insertOrUpdateBlock(editor as any, block)
     }
     window.addEventListener('paste', handlePaste)
     return () => window.removeEventListener('paste', handlePaste)
   }, [editor])
 
+  // Update video block after upload
   useEffect(() => {
     if (!editor) return
     const handleVideoUploaded = (e: Event) => {
@@ -228,14 +238,16 @@ export default function Editor({ initialContent, onChange }: EditorProps) {
       <BlockNoteView editor={editor} theme="light" slashMenu={false}>
         <SuggestionMenuController
           triggerCharacter="/"
-          getItems={async (query) => {
-            const defaults = getDefaultReactSlashMenuItems(editor)
-            const custom = [insertVideo(editor), insertYouTube(editor)]
-            return [...defaults, ...custom].filter((item) =>
-              item.title.toLowerCase().includes(query.toLowerCase()) ||
-              item.aliases?.some((a) => a.includes(query.toLowerCase()))
+          getItems={async (query) =>
+            filterSuggestionItems(
+              [
+                ...getDefaultReactSlashMenuItems(editor),
+                insertVideoItem(editor),
+                insertYouTubeItem(editor),
+              ],
+              query
             )
-          }}
+          }
         />
       </BlockNoteView>
     </div>
