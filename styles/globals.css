@@ -249,85 +249,58 @@
   color: hsl(var(--muted-foreground) / 0.5);
 }
 
-/* ── BlockNote popups: slash menu + color picker → dark theme ── */
-[data-floating-ui-focusable],
-[data-floating-ui-focusable] > *,
-[data-floating-ui-focusable] > * > * {
+/* BlockNote dark popups - slash menu + formatting toolbar + color picker */
+.bn-suggestion-menu,
+.bn-formatting-toolbar,
+.bn-color-picker {
   background-color: #1c1c1c !important;
+  border: 1px solid #2e2e2e !important;
+  border-radius: 8px !important;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.6) !important;
   color: #e5e5e5 !important;
-  border-color: #333 !important;
-  box-shadow: none !important;
 }
 
-/* Item hover/selected */
-[data-floating-ui-focusable] [role="option"]:hover,
-[data-floating-ui-focusable] [role="option"][aria-selected="true"],
-[data-floating-ui-focusable] [role="menuitem"]:hover,
-[data-floating-ui-focusable] button:hover {
-  background-color: #2e2e2e !important;
+/* Item rows */
+.bn-suggestion-menu-item,
+.bn-formatting-toolbar button,
+.bn-color-picker button {
+  color: #e5e5e5 !important;
+  background-color: transparent !important;
+  border-radius: 6px !important;
+}
+
+.bn-suggestion-menu-item:hover,
+.bn-suggestion-menu-item[data-selected="true"],
+.bn-formatting-toolbar button:hover,
+.bn-color-picker button:hover {
+  background-color: #2a2a2a !important;
+}
+
+/* Item title & subtitle */
+.bn-suggestion-menu-item-title { color: #ffffff !important; }
+.bn-suggestion-menu-item-subtitle { color: #999 !important; }
+
+/* Section labels */
+.bn-suggestion-menu-label { color: #555 !important; text-transform: uppercase; font-size: 11px; }
+
+/* Keyboard badges */
+.bn-suggestion-menu-item-badge {
+  background-color: #252525 !important;
+  border: 1px solid #3a3a3a !important;
+  color: #777 !important;
 }
 
 /* Icon boxes */
-[data-floating-ui-focusable] [class*="icon"],
-[data-floating-ui-focusable] [class*="Icon"] {
+.bn-suggestion-menu-item-icon {
   background-color: #2a2a2a !important;
-  border-color: #444 !important;
-}
-
-/* Keyboard shortcut badges */
-[data-floating-ui-focusable] kbd,
-[data-floating-ui-focusable] [class*="badge"],
-[data-floating-ui-focusable] [class*="Badge"] {
-  background-color: #2a2a2a !important;
-  border-color: #444 !important;
-  color: #888 !important;
-}
-
-/* Section labels */
-[data-floating-ui-focusable] [class*="label"],
-[data-floating-ui-focusable] [class*="Label"],
-[data-floating-ui-focusable] [class*="header"],
-[data-floating-ui-focusable] [class*="Header"] {
-  color: #666 !important;
-}
-
-/* Color swatches - keep their actual colors */
-[data-floating-ui-focusable] [class*="swatch"],
-[data-floating-ui-focusable] [class*="Swatch"],
-[data-floating-ui-focusable] [style*="background-color"]:not([data-floating-ui-focusable]) {
-  background-color: unset !important;
-}
-
-/* Color picker outer container fix */
-[data-floating-ui-focusable] {
-  background-color: #1c1c1c !important;
-  border: 1px solid #333 !important;
-  border-radius: 8px !important;
-}
-
-/* Formatting toolbar - dark */
-[class*="formattingToolbar"],
-[class*="FormattingToolbar"],
-.bn-toolbar,
-[data-radix-popper-content-wrapper] > div,
-[class*="mantine-"][class*="Toolbar"] {
-  background-color: #1c1c1c !important;
-  border: 1px solid #333 !important;
-  border-radius: 8px !important;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.5) !important;
+  border: 1px solid #3a3a3a !important;
   color: #e5e5e5 !important;
 }
 
-[class*="formattingToolbar"] button,
-[class*="FormattingToolbar"] button,
-.bn-toolbar button,
-[data-radix-popper-content-wrapper] button {
-  color: #e5e5e5 !important;
-  background-color: transparent !important;
-}
-
-[class*="formattingToolbar"] button:hover,
-.bn-toolbar button:hover,
-[data-radix-popper-content-wrapper] button:hover {
-  background-color: #2e2e2e !important;
+/* Slash menu always stays in viewport */
+.bn-suggestion-menu {
+  position: fixed !important;
+  z-index: 9999 !important;
+  max-height: 420px !important;
+  overflow-y: auto !important;
 }
