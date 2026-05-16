@@ -120,6 +120,7 @@ export default function Editor({ initialContent, onChange }: EditorProps) {
       if (!text || !isYouTubeUrl(text)) return
       e.preventDefault()
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // @ts-ignore
       insertOrUpdateBlock(editor as any, {
         type: 'youtube',
         props: { url: text },
