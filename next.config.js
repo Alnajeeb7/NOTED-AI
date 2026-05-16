@@ -16,6 +16,16 @@ const nextConfig = {
         source: '/favicon.svg',
         headers: [{ key: 'Content-Type', value: 'image/svg+xml' }],
       },
+      {
+        // Allow YouTube iframes across all pages
+        source: '/(.*)',
+        headers: [
+          {
+            key: 'Content-Security-Policy',
+            value: "frame-src 'self' https://www.youtube.com https://youtube.com;",
+          },
+        ],
+      },
     ]
   },
 }
