@@ -41,6 +41,12 @@ const YouTubeBlock = createReactBlockSpec(
       const submit = (val: string) => {
         if (!val || !extractYouTubeId(val)) return
         editor.updateBlock(block.id, { type: 'youtube', props: { url: val } } as any)
+        setTimeout(() => {
+          const empties = (editor.document as any[]).filter(
+            (b: any) => b.type === 'youtube' && !b.props?.url && b.id !== block.id
+          )
+          if (empties.length) editor.removeBlocks(empties.map((b: any) => b.id) as any)
+        }, 100)
       }
 
       if (!block.props.url || !videoId) {
