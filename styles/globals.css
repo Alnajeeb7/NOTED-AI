@@ -257,36 +257,24 @@
   overflow-y: auto !important;
 }
 
-/* ── BlockNote dark popups ── */
+/* Force solid black on all BlockNote popups */
+.bn-mantine.bn-container,
+.bn-mantine .bn-suggestion-menu,
+.bn-mantine [data-floating-ui-focusable],
+.bn-mantine [data-floating-ui-focusable] > *,
+.bn-mantine [data-floating-ui-focusable] > * > * {
+  background-color: #111111 !important;
+  opacity: 1 !important;
+  backdrop-filter: none !important;
+}
 
-/* Slash menu - fixed, always visible, dark */
 .bn-suggestion-menu {
-  background-color: #1e1e1e !important;
-  border: 1px solid #333 !important;
-  border-radius: 10px !important;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.7) !important;
   position: fixed !important;
   z-index: 9999 !important;
   max-height: 60vh !important;
   overflow-y: auto !important;
-  width: 320px !important;
+  border: 1px solid #2a2a2a !important;
+  border-radius: 10px !important;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.9) !important;
+  width: 340px !important;
 }
-.bn-suggestion-menu div,
-.bn-suggestion-menu span,
-.bn-suggestion-menu p,
-.bn-suggestion-menu strong { background-color: transparent !important; color: #e5e5e5 !important; }
-.bn-suggestion-menu [class*="item"]:hover,
-.bn-suggestion-menu [class*="item"][data-selected="true"] { background-color: #2a2a2a !important; }
-
-/* Color picker + context menu (Delete/Colors) - same floating container */
-.bn-mantine [data-floating-ui-focusable] > div {
-  background-color: #1e1e1e !important;
-  border: 1px solid #333 !important;
-  border-radius: 8px !important;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.7) !important;
-}
-.bn-mantine [data-floating-ui-focusable] div,
-.bn-mantine [data-floating-ui-focusable] span,
-.bn-mantine [data-floating-ui-focusable] button,
-.bn-mantine [data-floating-ui-focusable] p { background-color: transparent !important; color: #e5e5e5 !important; }
-.bn-mantine [data-floating-ui-focusable] button:hover { background-color: #2a2a2a !important; }
