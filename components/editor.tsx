@@ -35,31 +35,36 @@ const YouTubeBlock = createReactBlockSpec(
   { type: 'youtube' as const, propSchema: { url: { default: '' } }, content: 'none' },
   {
     render: ({ block, editor }) => {
+      const [inputUrl, setInputUrl] = useState('')
       const videoId = extractYouTubeId(block.props.url)
+
+      const submit = (val: string) => {
+        if (!val || !extractYouTubeId(val)) return
+        editor.updateBlock(block.id, { type: 'youtube', props: { url: val } } as any)
+      }
 
       if (!block.props.url || !videoId) {
         return (
           <div contentEditable={false} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '10px 0' }}>
             <input
               autoFocus
+              value={inputUrl}
               placeholder="Paste YouTube URL and press Enter..."
               style={{ flex: 1, padding: '8px 12px', borderRadius: 6, border: '1.5px solid #333', background: '#1a1a1a', color: '#e5e5e5', fontSize: 13, outline: 'none' }}
               onClick={(e) => e.stopPropagation()}
               onMouseDown={(e) => e.stopPropagation()}
+              onChange={(e) => setInputUrl(e.target.value)}
               onPaste={(e) => {
                 e.stopPropagation()
                 const val = e.clipboardData.getData('text/plain').trim()
-                if (val && extractYouTubeId(val)) {
+                if (extractYouTubeId(val)) {
                   e.preventDefault()
-                  editor.updateBlock(block.id, { type: 'youtube', props: { url: val } } as any)
+                  submit(val)
                 }
               }}
               onKeyDown={(e) => {
                 e.stopPropagation()
-                if (e.key === 'Enter') {
-                  const val = (e.target as HTMLInputElement).value.trim()
-                  if (val) editor.updateBlock(block.id, { type: 'youtube', props: { url: val } } as any)
-                }
+                if (e.key === 'Enter') submit(inputUrl)
                 if (e.key === 'Escape') editor.removeBlocks([block.id] as any)
               }}
             />
