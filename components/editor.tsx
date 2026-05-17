@@ -34,9 +34,29 @@ function extractYouTubeId(url: string): string | null {
 const YouTubeBlock = createReactBlockSpec(
   { type: 'youtube' as const, propSchema: { url: { default: '' } }, content: 'none' },
   {
-    render: ({ block }) => {
+    render: ({ block, editor }) => {
       const videoId = extractYouTubeId(block.props.url)
-      if (!videoId) return <div style={{ padding: '8px 12px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 6, color: '#dc2626', fontSize: 13 }}>Invalid YouTube URL</div>
+
+      if (!block.props.url || !videoId) {
+        return (
+          <div contentEditable={false} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '10px 0' }}>
+            <input
+              autoFocus
+              placeholder="Paste YouTube URL and press Enter..."
+              style={{ flex: 1, padding: '8px 12px', borderRadius: 6, border: '1.5px solid #333', background: '#1a1a1a', color: '#e5e5e5', fontSize: 13, outline: 'none' }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  const val = (e.target as HTMLInputElement).value.trim()
+                  if (val) editor.updateBlock(block, { type: 'youtube', props: { url: val } } as any)
+                }
+                if (e.key === 'Escape') editor.removeBlocks([block])
+              }}
+            />
+            <span style={{ fontSize: 11, color: '#666' }}>Enter ↵</span>
+          </div>
+        )
+      }
+
       return (
         <div contentEditable={false} style={{ width: '100%', margin: '4px 0' }}>
           <div style={{ position: 'relative', paddingBottom: '56.25%', height: 0, overflow: 'hidden', borderRadius: 8, background: '#000' }}>
@@ -122,9 +142,8 @@ const insertYouTubeItem = (editor: typeof schema.BlockNoteEditor) => ({
   title: 'YouTube',
   subtext: 'Embed a YouTube video',
   onItemClick: () => {
-    const url = prompt('Paste YouTube URL:')
-    if (!url) return
-    insertOrUpdateBlock(editor as any, { type: 'youtube', props: { url } } as any)
+    // Insert block with empty URL — inline input will appear
+    insertOrUpdateBlock(editor as any, { type: 'youtube', props: { url: '' } } as any)
   },
   aliases: ['youtube', 'yt', 'embed'],
   group: 'Media',
