@@ -47,9 +47,9 @@ const YouTubeBlock = createReactBlockSpec(
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
                   const val = (e.target as HTMLInputElement).value.trim()
-                  if (val) editor.updateBlock(block, { type: 'youtube', props: { url: val } } as any)
+                  if (val) editor.updateBlock(block.id, { type: 'youtube', props: { url: val } } as any)
                 }
-                if (e.key === 'Escape') editor.removeBlocks([block])
+                if (e.key === 'Escape') editor.removeBlocks([block.id] as any)
               }}
             />
             <span style={{ fontSize: 11, color: '#666' }}>Enter ↵</span>
