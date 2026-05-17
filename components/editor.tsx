@@ -175,36 +175,50 @@ export default function Editor({ initialContent, onChange }: EditorProps) {
     return () => unsubscribe?.()
   }, [editor])
 
-  // Make floating panels draggable
+  // Make floating panels draggable — override transform with fixed position
   useEffect(() => {
     const makeDraggable = (el: HTMLElement) => {
       if (el.dataset.draggable) return
       el.dataset.draggable = '1'
-      el.style.cursor = 'grab'
-      let sx = 0, sy = 0, ox = 0, oy = 0
+
       const onDown = (e: MouseEvent) => {
         const t = e.target as HTMLElement
-        // Don't drag when clicking buttons/inputs
-        if (t.tagName === 'BUTTON' || t.tagName === 'INPUT' || t.tagName === 'A') return
-        e.preventDefault()
+        if (t.closest('button') || t.closest('input') || t.closest('a')) return
+
+        // Snapshot current visual position, kill transform
         const rect = el.getBoundingClientRect()
-        sx = e.clientX; sy = e.clientY; ox = rect.left; oy = rect.top
         el.style.position = 'fixed'
-        el.style.left = ox + 'px'
-        el.style.top = oy + 'px'
+        el.style.left = rect.left + 'px'
+        el.style.top = rect.top + 'px'
+        el.style.transform = 'none'
+        el.style.transition = 'none'
+        el.style.willChange = 'auto'
         el.style.cursor = 'grabbing'
+
+        let lastX = e.clientX
+        let lastY = e.clientY
+
         const onMove = (me: MouseEvent) => {
-          el.style.left = (ox + me.clientX - sx) + 'px'
-          el.style.top = (oy + me.clientY - sy) + 'px'
+          const dx = me.clientX - lastX
+          const dy = me.clientY - lastY
+          lastX = me.clientX
+          lastY = me.clientY
+          el.style.left = (parseFloat(el.style.left) + dx) + 'px'
+          el.style.top = (parseFloat(el.style.top) + dy) + 'px'
         }
+
         const onUp = () => {
           el.style.cursor = 'grab'
           window.removeEventListener('mousemove', onMove)
           window.removeEventListener('mouseup', onUp)
         }
+
+        e.preventDefault()
         window.addEventListener('mousemove', onMove)
         window.addEventListener('mouseup', onUp)
       }
+
+      el.style.cursor = 'grab'
       el.addEventListener('mousedown', onDown)
     }
 
