@@ -1,8 +1,9 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { Page, Workspace, AIMessage, UserProfile } from '@/types'
+import type { Page, Workspace, AIMessage, UserProfile, AIMode, UserMemory, UserApiKey, ApiKeySource, LearningPlan } from '@/types'
 import { DEFAULT_MODEL } from './groq'
 import type { GroqModelId } from './groq'
+import { DEFAULT_MEMORY } from './personalization'
 
 interface AppState {
   // Workspace
@@ -65,10 +66,43 @@ interface AppState {
   // AI Model selection
   selectedModel: GroqModelId
   setSelectedModel: (model: GroqModelId) => void
-  // modelId -> timestamp when rate-limited (0 = not limited)
   rateLimitedModels: Record<string, number>
   setModelRateLimited: (modelId: string) => void
   clearModelRateLimit: (modelId: string) => void
+
+  // ─── AI Mode ──────────────────────────────────────────────────────────────
+  aiMode: AIMode
+  setAiMode: (mode: AIMode) => void
+
+  // ─── Personalization / Memory ─────────────────────────────────────────────
+  userMemory: UserMemory | null
+  setUserMemory: (memory: UserMemory) => void
+  updateUserMemory: (updates: Partial<UserMemory>) => void
+  personalizationOpen: boolean
+  setPersonalizationOpen: (open: boolean) => void
+
+  // ─── API Keys ─────────────────────────────────────────────────────────────
+  apiKeySource: ApiKeySource
+  setApiKeySource: (source: ApiKeySource) => void
+  userApiKeys: UserApiKey[]
+  setUserApiKeys: (keys: UserApiKey[]) => void
+  addUserApiKey: (key: UserApiKey) => void
+  removeUserApiKey: (id: string) => void
+  activeUserKeyId: string | null
+  setActiveUserKeyId: (id: string | null) => void
+  apiKeyModalOpen: boolean
+  setApiKeyModalOpen: (open: boolean) => void
+
+  // ─── Analytics ───────────────────────────────────────────────────────────
+  analyticsOpen: boolean
+  setAnalyticsOpen: (open: boolean) => void
+  sessionMessages: number
+  incrementSessionMessages: () => void
+
+  // ─── Learning Plans ───────────────────────────────────────────────────────
+  activePlan: LearningPlan | null
+  setActivePlan: (plan: LearningPlan | null) => void
+  completePlanTask: (dayIdx: number, taskId: string) => void
 
   // Hydration tracking
   _hydrated: boolean
@@ -85,11 +119,8 @@ export const useAppStore = create<AppState>()(
       setPages: (pages) => set({ pages }),
       addPage: (page) => set((state) => ({ pages: [...state.pages, page] })),
       updatePage: (id, updates) =>
-        set((state) => ({
-          pages: state.pages.map((p) => (p.id === id ? { ...p, ...updates } : p)),
-        })),
-      removePage: (id) =>
-        set((state) => ({ pages: state.pages.filter((p) => p.id !== id) })),
+        set((state) => ({ pages: state.pages.map((p) => (p.id === id ? { ...p, ...updates } : p)) })),
+      removePage: (id) => set((state) => ({ pages: state.pages.filter((p) => p.id !== id) })),
 
       currentPageId: null,
       setCurrentPageId: (id) => set({ currentPageId: id }),
@@ -107,8 +138,7 @@ export const useAppStore = create<AppState>()(
 
       aiMessages: [],
       setAiMessages: (messages) => set({ aiMessages: messages }),
-      addAiMessage: (message) =>
-        set((state) => ({ aiMessages: [...state.aiMessages, message] })),
+      addAiMessage: (message) => set((state) => ({ aiMessages: [...state.aiMessages, message] })),
       clearAiMessages: () => set({ aiMessages: [] }),
 
       searchOpen: false,
@@ -148,14 +178,63 @@ export const useAppStore = create<AppState>()(
           return { rateLimitedModels: next }
         }),
 
+      // ─── AI Mode ────────────────────────────────────────────────────────────
+      aiMode: 'chat',
+      setAiMode: (mode) => set({ aiMode: mode }),
+
+      // ─── Personalization ────────────────────────────────────────────────────
+      userMemory: null,
+      setUserMemory: (memory) => set({ userMemory: memory }),
+      updateUserMemory: (updates) =>
+        set((state) => ({
+          userMemory: state.userMemory
+            ? { ...state.userMemory, ...updates, lastUpdated: new Date().toISOString() }
+            : { ...DEFAULT_MEMORY, id: 'local', userId: '', workspaceId: '', ...updates, lastUpdated: new Date().toISOString() },
+        })),
+      personalizationOpen: false,
+      setPersonalizationOpen: (open) => set({ personalizationOpen: open }),
+
+      // ─── API Keys ────────────────────────────────────────────────────────────
+      apiKeySource: 'platform',
+      setApiKeySource: (source) => set({ apiKeySource: source }),
+      userApiKeys: [],
+      setUserApiKeys: (keys) => set({ userApiKeys: keys }),
+      addUserApiKey: (key) => set((state) => ({ userApiKeys: [...state.userApiKeys, key] })),
+      removeUserApiKey: (id) => set((state) => ({ userApiKeys: state.userApiKeys.filter((k) => k.id !== id) })),
+      activeUserKeyId: null,
+      setActiveUserKeyId: (id) => set({ activeUserKeyId: id }),
+      apiKeyModalOpen: false,
+      setApiKeyModalOpen: (open) => set({ apiKeyModalOpen: open }),
+
+      // ─── Analytics ──────────────────────────────────────────────────────────
+      analyticsOpen: false,
+      setAnalyticsOpen: (open) => set({ analyticsOpen: open }),
+      sessionMessages: 0,
+      incrementSessionMessages: () => set((state) => ({ sessionMessages: state.sessionMessages + 1 })),
+
+      // ─── Learning Plans ─────────────────────────────────────────────────────
+      activePlan: null,
+      setActivePlan: (plan) => set({ activePlan: plan }),
+      completePlanTask: (dayIdx, taskId) =>
+        set((state) => {
+          if (!state.activePlan) return {}
+          const days = state.activePlan.days.map((d, i) => {
+            if (i !== dayIdx) return d
+            const tasks = d.tasks.map((t) => t.id === taskId ? { ...t, isComplete: true } : t)
+            const isComplete = tasks.every((t) => t.isComplete)
+            return { ...d, tasks, isComplete }
+          })
+          const done = days.filter((d) => d.isComplete).length
+          const progress = Math.round((done / days.length) * 100)
+          return { activePlan: { ...state.activePlan, days, progress } }
+        }),
+
       _hydrated: false,
       setHydrated: (v) => set({ _hydrated: v }),
     }),
     {
       name: 'noted-store',
-      onRehydrateStorage: () => (state) => {
-        state?.setHydrated(true)
-      },
+      onRehydrateStorage: () => (state) => { state?.setHydrated(true) },
       partialize: (state) => ({
         aiOpen: state.aiOpen,
         favorites: state.favorites,
@@ -164,6 +243,12 @@ export const useAppStore = create<AppState>()(
         compactSidebar: state.compactSidebar,
         alwaysSidebar: state.alwaysSidebar,
         selectedModel: state.selectedModel,
+        aiMode: state.aiMode,
+        userMemory: state.userMemory,
+        apiKeySource: state.apiKeySource,
+        userApiKeys: state.userApiKeys,
+        activeUserKeyId: state.activeUserKeyId,
+        activePlan: state.activePlan,
       }),
     }
   )
