@@ -255,26 +255,26 @@
   border: 1px solid #333 !important;
   border-radius: 8px !important;
   box-shadow: 0 8px 24px rgba(0,0,0,0.6) !important;
-  color: #e5e5e5 !important;
   position: fixed !important;
   z-index: 9999 !important;
   max-height: 420px !important;
   overflow-y: auto !important;
-}
-
-.bn-suggestion-menu * {
   color: #e5e5e5 !important;
 }
-
+.bn-suggestion-menu * { color: #e5e5e5 !important; }
 .bn-suggestion-menu [class*="item"]:hover,
 .bn-suggestion-menu [class*="item"][data-selected="true"] {
   background-color: #2a2a2a !important;
 }
 
-/* Color picker - black */
-.bn-color-picker,
-.bn-color-picker * {
+/* Color picker - target all floating popups that aren't slash menu */
+.bn-ak-mantine-popover-dropdown,
+[class*="mantine-Popover-dropdown"] {
   background-color: #1c1c1c !important;
-  color: #e5e5e5 !important;
-  border-color: #333 !important;
+  border: 1px solid #333 !important;
+  border-radius: 8px !important;
+}
+[class*="mantine-Popover-dropdown"] * { color: #e5e5e5 !important; }
+[class*="mantine-Popover-dropdown"] [style*="background-color"]:not([style*="background-color: transparent"]) {
+  background-color: unset !important;
 }
