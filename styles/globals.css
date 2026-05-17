@@ -249,51 +249,44 @@
   color: hsl(var(--muted-foreground) / 0.5);
 }
 
-/* ── BlockNote dark popups ── */
-
-/* Slash menu */
+/* Slash menu always visible */
 .bn-suggestion-menu {
-  background-color: #1c1c1c !important;
-  border: 1px solid #333 !important;
-  border-radius: 8px !important;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.6) !important;
   position: fixed !important;
   z-index: 9999 !important;
   max-height: 420px !important;
   overflow-y: auto !important;
 }
+
+/* ── BlockNote dark popups ── */
+
+/* Slash menu - fixed, always visible, dark */
+.bn-suggestion-menu {
+  background-color: #1e1e1e !important;
+  border: 1px solid #333 !important;
+  border-radius: 10px !important;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.7) !important;
+  position: fixed !important;
+  z-index: 9999 !important;
+  max-height: 60vh !important;
+  overflow-y: auto !important;
+  width: 320px !important;
+}
 .bn-suggestion-menu div,
 .bn-suggestion-menu span,
-.bn-suggestion-menu p {
-  background-color: transparent !important;
-  color: #e5e5e5 !important;
-}
+.bn-suggestion-menu p,
+.bn-suggestion-menu strong { background-color: transparent !important; color: #e5e5e5 !important; }
 .bn-suggestion-menu [class*="item"]:hover,
-.bn-suggestion-menu [class*="item"][data-selected="true"] {
-  background-color: #2a2a2a !important;
-}
+.bn-suggestion-menu [class*="item"][data-selected="true"] { background-color: #2a2a2a !important; }
 
-/* Context menu (Delete/Colors) + Color picker — they all live in data-floating-ui-focusable */
-.bn-mantine [data-floating-ui-focusable] {
-  background-color: #1c1c1c !important;
+/* Color picker + context menu (Delete/Colors) - same floating container */
+.bn-mantine [data-floating-ui-focusable] > div {
+  background-color: #1e1e1e !important;
   border: 1px solid #333 !important;
   border-radius: 8px !important;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.6) !important;
-  color: #e5e5e5 !important;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.7) !important;
 }
 .bn-mantine [data-floating-ui-focusable] div,
 .bn-mantine [data-floating-ui-focusable] span,
-.bn-mantine [data-floating-ui-focusable] p,
-.bn-mantine [data-floating-ui-focusable] button {
-  background-color: transparent !important;
-  color: #e5e5e5 !important;
-}
-.bn-mantine [data-floating-ui-focusable] button:hover,
-.bn-mantine [data-floating-ui-focusable] [role="menuitem"]:hover {
-  background-color: #2a2a2a !important;
-}
-/* Keep color swatches their actual color */
-.bn-mantine [data-floating-ui-focusable] [style*="background:"],
-.bn-mantine [data-floating-ui-focusable] [style*="background-color: rgb"]:not([style*="background-color: rgb(255"]) {
-  background-color: unset !important;
-}
+.bn-mantine [data-floating-ui-focusable] button,
+.bn-mantine [data-floating-ui-focusable] p { background-color: transparent !important; color: #e5e5e5 !important; }
+.bn-mantine [data-floating-ui-focusable] button:hover { background-color: #2a2a2a !important; }
