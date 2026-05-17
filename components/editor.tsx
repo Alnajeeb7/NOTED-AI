@@ -175,9 +175,49 @@ export default function Editor({ initialContent, onChange }: EditorProps) {
     return () => unsubscribe?.()
   }, [editor])
 
+  // Make floating panels draggable
+  useEffect(() => {
+    const makeDraggable = (el: HTMLElement) => {
+      if (el.dataset.draggable) return
+      el.dataset.draggable = '1'
+      el.style.cursor = 'grab'
+      let sx = 0, sy = 0, ox = 0, oy = 0
+      const onDown = (e: MouseEvent) => {
+        const t = e.target as HTMLElement
+        // Don't drag when clicking buttons/inputs
+        if (t.tagName === 'BUTTON' || t.tagName === 'INPUT' || t.tagName === 'A') return
+        e.preventDefault()
+        const rect = el.getBoundingClientRect()
+        sx = e.clientX; sy = e.clientY; ox = rect.left; oy = rect.top
+        el.style.position = 'fixed'
+        el.style.left = ox + 'px'
+        el.style.top = oy + 'px'
+        el.style.cursor = 'grabbing'
+        const onMove = (me: MouseEvent) => {
+          el.style.left = (ox + me.clientX - sx) + 'px'
+          el.style.top = (oy + me.clientY - sy) + 'px'
+        }
+        const onUp = () => {
+          el.style.cursor = 'grab'
+          window.removeEventListener('mousemove', onMove)
+          window.removeEventListener('mouseup', onUp)
+        }
+        window.addEventListener('mousemove', onMove)
+        window.addEventListener('mouseup', onUp)
+      }
+      el.addEventListener('mousedown', onDown)
+    }
+
+    const observer = new MutationObserver(() => {
+      document.querySelectorAll<HTMLElement>('[data-floating-ui-focusable]').forEach(makeDraggable)
+    })
+    observer.observe(document.body, { childList: true, subtree: true })
+    return () => observer.disconnect()
+  }, [])
+
   return (
     <div id="bn-editor-focus" tabIndex={-1}>
-      <BlockNoteView editor={editor} theme="light" slashMenu={false}>
+      <BlockNoteView editor={editor} theme="dark" slashMenu={false}>
         <SuggestionMenuController
           triggerCharacter="/"
           getItems={async (query) =>
