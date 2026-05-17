@@ -249,7 +249,9 @@
   color: hsl(var(--muted-foreground) / 0.5);
 }
 
-/* Slash menu - black */
+/* ── BlockNote dark popups ── */
+
+/* Slash menu */
 .bn-suggestion-menu {
   background-color: #1c1c1c !important;
   border: 1px solid #333 !important;
@@ -259,22 +261,39 @@
   z-index: 9999 !important;
   max-height: 420px !important;
   overflow-y: auto !important;
+}
+.bn-suggestion-menu div,
+.bn-suggestion-menu span,
+.bn-suggestion-menu p {
+  background-color: transparent !important;
   color: #e5e5e5 !important;
 }
-.bn-suggestion-menu * { color: #e5e5e5 !important; }
 .bn-suggestion-menu [class*="item"]:hover,
 .bn-suggestion-menu [class*="item"][data-selected="true"] {
   background-color: #2a2a2a !important;
 }
 
-/* Color picker - target all floating popups that aren't slash menu */
-.bn-ak-mantine-popover-dropdown,
-[class*="mantine-Popover-dropdown"] {
+/* Context menu (Delete/Colors) + Color picker — they all live in data-floating-ui-focusable */
+.bn-mantine [data-floating-ui-focusable] {
   background-color: #1c1c1c !important;
   border: 1px solid #333 !important;
   border-radius: 8px !important;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.6) !important;
+  color: #e5e5e5 !important;
 }
-[class*="mantine-Popover-dropdown"] * { color: #e5e5e5 !important; }
-[class*="mantine-Popover-dropdown"] [style*="background-color"]:not([style*="background-color: transparent"]) {
+.bn-mantine [data-floating-ui-focusable] div,
+.bn-mantine [data-floating-ui-focusable] span,
+.bn-mantine [data-floating-ui-focusable] p,
+.bn-mantine [data-floating-ui-focusable] button {
+  background-color: transparent !important;
+  color: #e5e5e5 !important;
+}
+.bn-mantine [data-floating-ui-focusable] button:hover,
+.bn-mantine [data-floating-ui-focusable] [role="menuitem"]:hover {
+  background-color: #2a2a2a !important;
+}
+/* Keep color swatches their actual color */
+.bn-mantine [data-floating-ui-focusable] [style*="background:"],
+.bn-mantine [data-floating-ui-focusable] [style*="background-color: rgb"]:not([style*="background-color: rgb(255"]) {
   background-color: unset !important;
 }
