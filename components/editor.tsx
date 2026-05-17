@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useCreateBlockNote } from '@blocknote/react'
 import { BlockNoteView } from '@blocknote/mantine'
 import '@blocknote/mantine/style.css'
@@ -16,8 +16,6 @@ import {
   SuggestionMenuController,
 } from '@blocknote/react'
 import type { Block } from '@blocknote/core'
-
-// ─── YouTube block ────────────────────────────────────────────────────────────
 
 function extractYouTubeId(url: string): string | null {
   const patterns = [
@@ -38,25 +36,13 @@ const YouTubeBlock = createReactBlockSpec(
   {
     render: ({ block }) => {
       const videoId = extractYouTubeId(block.props.url)
-      if (!videoId) return (
-        <div style={{ padding: '8px 12px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 6, color: '#dc2626', fontSize: 13 }}>
-          Invalid YouTube URL
-        </div>
-      )
+      if (!videoId) return <div style={{ padding: '8px 12px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 6, color: '#dc2626', fontSize: 13 }}>Invalid YouTube URL</div>
       return (
         <div contentEditable={false} style={{ width: '100%', margin: '4px 0' }}>
           <div style={{ position: 'relative', paddingBottom: '56.25%', height: 0, overflow: 'hidden', borderRadius: 8, background: '#000' }}>
-            <iframe
-              src={`https://www.youtube.com/embed/${videoId}`}
-              title="YouTube video"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              allowFullScreen
-              style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', border: 'none' }}
-            />
+            <iframe src={`https://www.youtube.com/embed/${videoId}`} title="YouTube video" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', border: 'none' }} />
           </div>
-          <a href={block.props.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: '#6b7280', marginTop: 4, display: 'inline-block' }}>
-            Open on YouTube ↗
-          </a>
+          <a href={block.props.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: 11, color: '#6b7280', marginTop: 4, display: 'inline-block' }}>Open on YouTube ↗</a>
         </div>
       )
     },
@@ -64,31 +50,18 @@ const YouTubeBlock = createReactBlockSpec(
   }
 )
 
-// ─── Video block ──────────────────────────────────────────────────────────────
-
 const VideoBlock = createReactBlockSpec(
   { type: 'video' as const, propSchema: { url: { default: '' }, name: { default: '' } }, content: 'none' },
   {
     render: ({ block }) => {
       const [uploading, setUploading] = useState(false)
-
       if (!block.props.url) {
         return (
           <div contentEditable={false}>
-            <label style={{
-              display: 'flex', alignItems: 'center', gap: 8,
-              cursor: uploading ? 'not-allowed' : 'pointer',
-              padding: '12px 16px', borderRadius: 8,
-              border: '1.5px dashed #d1d5db', background: '#fafafa',
-              fontSize: 13, color: '#6b7280', opacity: uploading ? 0.6 : 1,
-            }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: uploading ? 'not-allowed' : 'pointer', padding: '12px 16px', borderRadius: 8, border: '1.5px dashed #d1d5db', background: '#fafafa', fontSize: 13, color: '#6b7280', opacity: uploading ? 0.6 : 1 }}>
               <span style={{ fontSize: 18 }}>🎬</span>
               <span>{uploading ? 'Uploading…' : 'Click to upload video (mp4, webm — max 100 MB)'}</span>
-              <input
-                type="file"
-                accept="video/mp4,video/webm,video/ogg,video/quicktime"
-                style={{ display: 'none' }}
-                disabled={uploading}
+              <input type="file" accept="video/mp4,video/webm,video/ogg,video/quicktime" style={{ display: 'none' }} disabled={uploading}
                 onChange={async (e) => {
                   const file = e.target.files?.[0]
                   if (!file) return
@@ -99,21 +72,15 @@ const VideoBlock = createReactBlockSpec(
                     const res = await fetch('/api/upload', { method: 'POST', body: fd })
                     if (!res.ok) throw new Error('Upload failed')
                     const { url } = await res.json()
-                    window.dispatchEvent(new CustomEvent('video-uploaded', {
-                      detail: { url, name: file.name, blockId: block.id }
-                    }))
-                  } catch {
-                    alert('Video upload failed. Try again.')
-                  } finally {
-                    setUploading(false)
-                  }
+                    window.dispatchEvent(new CustomEvent('video-uploaded', { detail: { url, name: file.name, blockId: block.id } }))
+                  } catch { alert('Video upload failed.') }
+                  finally { setUploading(false) }
                 }}
               />
             </label>
           </div>
         )
       }
-
       return (
         <div contentEditable={false} style={{ width: '100%', margin: '4px 0' }}>
           <video controls style={{ width: '100%', borderRadius: 8, maxHeight: 480, background: '#000' }} src={block.props.url} />
@@ -125,22 +92,15 @@ const VideoBlock = createReactBlockSpec(
   }
 )
 
-// ─── Schema ───────────────────────────────────────────────────────────────────
-
 const schema = BlockNoteSchema.create({
   blockSpecs: { ...defaultBlockSpecs, youtube: YouTubeBlock, video: VideoBlock },
 })
-
-// ─── Upload handler (images) ──────────────────────────────────────────────────
 
 async function uploadToSupabase(file: File): Promise<string> {
   const formData = new FormData()
   formData.append('file', file)
   const res = await fetch('/api/upload', { method: 'POST', body: formData })
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}))
-    throw new Error(err.error || 'Upload failed')
-  }
+  if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error || 'Upload failed') }
   const { url } = await res.json()
   return url
 }
@@ -149,16 +109,11 @@ function isYouTubeUrl(text: string): boolean {
   return /(?:youtube\.com\/watch|youtu\.be\/|youtube\.com\/shorts\/)/.test(text)
 }
 
-// ─── Slash menu items ─────────────────────────────────────────────────────────
-
 const insertVideoItem = (editor: typeof schema.BlockNoteEditor) => ({
   title: 'Video',
   subtext: 'Insert a video file',
-  onItemClick: () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    insertOrUpdateBlock(editor as any, { type: 'video', props: { url: '', name: '' } } as any)
-  },
-  aliases: ['video', 'mp4', 'webm', 'film', 'media', 'upload'],
+  onItemClick: () => { insertOrUpdateBlock(editor as any, { type: 'video', props: { url: '', name: '' } } as any) },
+  aliases: ['video', 'mp4', 'webm', 'film', 'media'],
   group: 'Media',
   icon: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="7" width="20" height="15" rx="2"/><polyline points="17 2 12 7 7 2"/></svg>,
 })
@@ -169,15 +124,12 @@ const insertYouTubeItem = (editor: typeof schema.BlockNoteEditor) => ({
   onItemClick: () => {
     const url = prompt('Paste YouTube URL:')
     if (!url) return
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     insertOrUpdateBlock(editor as any, { type: 'youtube', props: { url } } as any)
   },
-  aliases: ['youtube', 'yt', 'embed', 'video'],
+  aliases: ['youtube', 'yt', 'embed'],
   group: 'Media',
   icon: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>,
 })
-
-// ─── Component ────────────────────────────────────────────────────────────────
 
 interface EditorProps {
   initialContent?: Block[] | null
@@ -187,23 +139,19 @@ interface EditorProps {
 export default function Editor({ initialContent, onChange }: EditorProps) {
   const editor = useCreateBlockNote({
     schema,
-    initialContent: initialContent && initialContent.length > 0
-      ? (initialContent as typeof schema.Block[])
-      : undefined,
+    initialContent: initialContent && initialContent.length > 0 ? (initialContent as typeof schema.Block[]) : undefined,
     uploadFile: uploadToSupabase,
   })
 
   const changeRef = useRef(onChange)
   changeRef.current = onChange
 
-  // Auto-embed YouTube on paste
   useEffect(() => {
     if (!editor) return
     const handlePaste = (e: ClipboardEvent) => {
       const text = e.clipboardData?.getData('text/plain')?.trim()
       if (!text || !isYouTubeUrl(text)) return
       e.preventDefault()
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const block = { type: 'youtube', props: { url: text } } as any
       insertOrUpdateBlock(editor as any, block)
     }
@@ -211,15 +159,11 @@ export default function Editor({ initialContent, onChange }: EditorProps) {
     return () => window.removeEventListener('paste', handlePaste)
   }, [editor])
 
-  // Update video block after upload
   useEffect(() => {
     if (!editor) return
     const handleVideoUploaded = (e: Event) => {
       const { url, name, blockId } = (e as CustomEvent).detail
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        editor.updateBlock(blockId, { type: 'video', props: { url, name } } as any)
-      } catch { /* ignore */ }
+      try { editor.updateBlock(blockId, { type: 'video', props: { url, name } } as any) } catch { }
     }
     window.addEventListener('video-uploaded', handleVideoUploaded)
     return () => window.removeEventListener('video-uploaded', handleVideoUploaded)
@@ -227,35 +171,9 @@ export default function Editor({ initialContent, onChange }: EditorProps) {
 
   useEffect(() => {
     if (!editor) return
-    const unsubscribe = editor.onChange(() => {
-      changeRef.current?.(editor.document as Block[])
-    })
+    const unsubscribe = editor.onChange(() => { changeRef.current?.(editor.document as Block[]) })
     return () => unsubscribe?.()
   }, [editor])
-
-  // Draggable slash menu state
-  const [menuPos, setMenuPos] = useState({ x: 0, y: 0 })
-  const [menuVisible, setMenuVisible] = useState(false)
-  const dragRef = useRef<{ startX: number; startY: number; origX: number; origY: number } | null>(null)
-
-  const onDragStart = useCallback((e: React.MouseEvent) => {
-    e.preventDefault()
-    dragRef.current = { startX: e.clientX, startY: e.clientY, origX: menuPos.x, origY: menuPos.y }
-    const onMove = (me: MouseEvent) => {
-      if (!dragRef.current) return
-      setMenuPos({
-        x: dragRef.current.origX + me.clientX - dragRef.current.startX,
-        y: dragRef.current.origY + me.clientY - dragRef.current.startY,
-      })
-    }
-    const onUp = () => {
-      dragRef.current = null
-      window.removeEventListener('mousemove', onMove)
-      window.removeEventListener('mouseup', onUp)
-    }
-    window.addEventListener('mousemove', onMove)
-    window.addEventListener('mouseup', onUp)
-  }, [menuPos])
 
   return (
     <div id="bn-editor-focus" tabIndex={-1}>
@@ -264,32 +182,10 @@ export default function Editor({ initialContent, onChange }: EditorProps) {
           triggerCharacter="/"
           getItems={async (query) =>
             filterSuggestionItems(
-              [
-                ...getDefaultReactSlashMenuItems(editor),
-                insertVideoItem(editor),
-                insertYouTubeItem(editor),
-              ],
+              [...getDefaultReactSlashMenuItems(editor), insertVideoItem(editor), insertYouTubeItem(editor)],
               query
             )
           }
-          suggestionMenuComponent={(props) => (
-            <div
-              style={{
-                position: 'fixed',
-                left: menuPos.x || undefined,
-                top: menuPos.y || undefined,
-                zIndex: 9999,
-                cursor: 'grab',
-                userSelect: 'none',
-              }}
-              onMouseDown={onDragStart}
-            >
-              <div onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} style={{ cursor: 'default' }}>
-                {/* @ts-ignore */}
-                {props.children}
-              </div>
-            </div>
-          )}
         />
       </BlockNoteView>
     </div>
