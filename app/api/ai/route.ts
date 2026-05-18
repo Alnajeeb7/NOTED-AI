@@ -174,7 +174,7 @@ IMPORTANT: When the user asks to create, update, search, or list pages — ALWAY
       const assistantMessage = choice.message
 
       // Validate finish reason — if generation failed/truncated, bail early
-      if (choice.finish_reason === 'error' || choice.finish_reason === 'length') {
+      if (choice.finish_reason === 'length') {
         return NextResponse.json({
           content: 'The response was too long or an error occurred. Please try a shorter request.',
           action: lastActionData,
