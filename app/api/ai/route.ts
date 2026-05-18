@@ -3,6 +3,11 @@ import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs'
 import { createClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 import { getGroqClient, SYSTEM_PROMPT, AGENT_TOOLS, GROQ_MODELS, DEFAULT_MODEL } from '@/lib/groq'
+import {
+  buildPageChunks, retrieveRelevantChunks, buildKBContext,
+  extractTextFromBlocks, getAntiHallucinationRules, STRUCTURED_RESPONSE_FORMAT,
+  type KBChunk,
+} from '@/lib/rag'
 import type { GroqModelId } from '@/lib/groq'
 import type Groq from 'groq-sdk'
 
@@ -17,89 +22,151 @@ export async function POST(req: NextRequest) {
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const { messages, workspaceId, currentPageId, model: requestedModel } = await req.json()
-    if (!messages || !workspaceId) {
-      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
+    const {
+      messages, workspaceId, currentPageId,
+      model: requestedModel, userApiKey,
+      attachedFiles, kbItems,
+    } = await req.json() as {
+      messages: { role: string; content: string }[]
+      workspaceId: string
+      currentPageId?: string
+      model?: string
+      userApiKey?: string
+      attachedFiles?: Array<{ name: string; type: string; content: string }>
+      kbItems?: Array<{ id: string; name: string; extracted_text: string; file_type: string }>
     }
 
-    const validModelIds = GROQ_MODELS.map((m) => m.id)
-    const model: GroqModelId = validModelIds.includes(requestedModel) ? requestedModel : DEFAULT_MODEL
+    if (!messages || !workspaceId)
+      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
 
+    const validModelIds = GROQ_MODELS.map((m) => m.id)
+    const model: GroqModelId = validModelIds.includes(requestedModel as GroqModelId)
+      ? (requestedModel as GroqModelId) : DEFAULT_MODEL
+
+    // ── 1. Fetch pages ───────────────────────────────────────────────────────
     const { data: pages } = await supabaseAdmin
       .from('pages')
-      .select('id, title, icon, updated_at')
+      .select('id, title, icon, content, updated_at')
       .eq('workspace_id', workspaceId)
       .eq('is_archived', false)
       .order('updated_at', { ascending: false })
-      .limit(30)
+      .limit(50)
 
-    const pageContext = pages?.length
+    // ── 2. Fetch KB items ────────────────────────────────────────────────────
+    let dbKBItems: Array<{ id: string; name: string; extracted_text: string; file_type: string }> = []
+    try {
+      const { data } = await supabaseAdmin
+        .from('knowledge_base')
+        .select('id, name, extracted_text, file_type')
+        .eq('workspace_id', workspaceId)
+        .eq('user_id', session.user.id)
+        .order('created_at', { ascending: false })
+        .limit(30)
+      dbKBItems = data || []
+    } catch { /* table may not exist */ }
+
+    const allKBItems = [...dbKBItems, ...(kbItems || [])]
+
+    // ── 3. Build RAG chunks ──────────────────────────────────────────────────
+    const pageChunks: KBChunk[] = buildPageChunks(pages || [])
+    const kbChunks: KBChunk[] = allKBItems.flatMap((item) =>
+      item.extracted_text ? [{
+        id: `kb-${item.id}`, source: item.name, sourceType: 'kb_file' as const,
+        content: item.extracted_text.slice(0, 3000), metadata: { fileId: item.id },
+      }] : []
+    )
+    const attachedChunks: KBChunk[] = (attachedFiles || []).map((f, i) => ({
+      id: `attached-${i}`, source: f.name, sourceType: 'kb_file' as const,
+      content: f.content.slice(0, 3000), metadata: {},
+    }))
+    const allChunks = [...pageChunks, ...kbChunks, ...attachedChunks]
+
+    // ── 4. RAG retrieval ─────────────────────────────────────────────────────
+    const userQuery = messages[messages.length - 1]?.content || ''
+    const relevantChunks = retrieveRelevantChunks(userQuery, allChunks, 6, 0.05)
+
+    // ── 5. Current page content ──────────────────────────────────────────────
+    let currentPageContent: string | undefined
+    let currentPageTitle: string | undefined
+    if (currentPageId && pages) {
+      const cp = pages.find((p) => p.id === currentPageId)
+      if (cp) { currentPageContent = extractTextFromBlocks(cp.content); currentPageTitle = cp.title }
+    }
+
+    // ── 6. Build context & prompt ────────────────────────────────────────────
+    const hasKBData = relevantChunks.length > 0 || allKBItems.length > 0 || (attachedFiles?.length ?? 0) > 0
+    const kbContext = buildKBContext(relevantChunks, currentPageContent, currentPageTitle)
+    const pageListContext = pages?.length
       ? pages.map((p) => `- ${p.icon || '📄'} "${p.title}" (id: ${p.id})`).join('\n')
       : 'No pages yet'
 
-    const groqMessages: Groq.Chat.ChatCompletionMessageParam[] = [
-      {
-        role: 'system',
-        content: `${SYSTEM_PROMPT}
+    const systemContent = `${SYSTEM_PROMPT}
 
 WORKSPACE CONTEXT:
 - Workspace ID: ${workspaceId}
 - User ID: ${session.user.id}
 - Total pages: ${pages?.length || 0}
-- Currently viewing page: ${currentPageId || 'none'}
-- Pages in workspace:
-${pageContext}
+- Currently viewing: ${currentPageId || 'none'}
+- KB files loaded: ${allKBItems.length + (attachedFiles?.length ?? 0)}
 
-IMPORTANT: When the user asks you to create, update, search, or list pages — ALWAYS use the available tools. Do not just describe what you would do — actually call the tool.`,
-      },
-      ...messages.slice(0, -1).map((m: { role: string; content: string }) => ({
-        role: m.role as 'user' | 'assistant',
-        content: m.content,
+PAGES IN WORKSPACE:
+${pageListContext}
+
+${kbContext ? `---\n${kbContext}\n---` : ''}
+
+${getAntiHallucinationRules(relevantChunks.length > 0)}
+
+${STRUCTURED_RESPONSE_FORMAT}
+
+IMPORTANT: When the user asks to create, update, search, or list pages — ALWAYS use the available tools.`
+
+    const groqMessages: Groq.Chat.ChatCompletionMessageParam[] = [
+      { role: 'system', content: systemContent },
+      ...messages.slice(0, -1).map((m) => ({
+        role: m.role as 'user' | 'assistant', content: m.content,
       })),
-      {
-        role: 'user' as const,
-        content: messages[messages.length - 1].content,
-      },
+      { role: 'user' as const, content: userQuery },
     ]
 
-    const actionData: { type: string; pageId?: string; title?: string } | null = null
-    let lastActionData: { type: string; pageId?: any; title?: any } | null = actionData
+    // ── 7. Agentic loop ──────────────────────────────────────────────────────
+    const modelConfig = GROQ_MODELS.find((m) => m.id === model)
+    const supportsTools = modelConfig?.supportsTools !== false
+    let lastActionData: { type: string; pageId?: string; title?: string } | null = null
     let loopCount = 0
     const MAX_LOOPS = 6
 
-    // BUG FIX: check if model supports tool calling before sending tools
-    const modelConfig = GROQ_MODELS.find((m) => m.id === model)
-    const supportsTools = modelConfig?.supportsTools !== false
-
     while (loopCount < MAX_LOOPS) {
       loopCount++
-
-      const groq = getGroqClient()
+      const groq = getGroqClient(userApiKey)
       const response = await groq.chat.completions.create({
-        model,
-        messages: groqMessages,
+        model, messages: groqMessages,
         ...(supportsTools ? { tools: AGENT_TOOLS, tool_choice: 'auto' as const } : {}),
-        max_tokens: 2048,
-        temperature: 0.3,
+        max_tokens: 2048, temperature: 0.3,
       })
 
       const choice = response.choices[0]
       const assistantMessage = choice.message
-
       groqMessages.push(assistantMessage)
 
       if (!assistantMessage.tool_calls || assistantMessage.tool_calls.length === 0) {
+        const rawContent = assistantMessage.content || ''
+        const cleaned = rawContent
+          .replace(/\?\?\?+/g, '[data unavailable]')
+          || (hasKBData
+            ? 'Insufficient or unclear data from Knowledge Base for this query.'
+            : 'I could not generate a response. Please rephrase your question.')
+
         return NextResponse.json({
-          content: assistantMessage.content || 'Done! Let me know if you need anything else.',
+          content: cleaned,
           action: lastActionData,
+          sourcesUsed: relevantChunks.map((c) => ({ source: c.source, type: c.sourceType })),
         })
       }
 
       for (const toolCall of assistantMessage.tool_calls) {
         const fnName = toolCall.function.name
         let args: Record<string, string> = {}
-        try { args = JSON.parse(toolCall.function.arguments) } catch { /* empty args */ }
-
+        try { args = JSON.parse(toolCall.function.arguments) } catch { /* empty */ }
         let toolResult = ''
 
         switch (fnName) {
@@ -108,140 +175,67 @@ IMPORTANT: When the user asks you to create, update, search, or list pages — A
             const { data: newPage, error } = await supabaseAdmin
               .from('pages')
               // @ts-ignore
-              .insert({
-                workspace_id: workspaceId,
-                title: args.title || 'Untitled',
-                icon: args.icon || getDefaultIcon(args.title || ''),
-                content: blocks,
-                created_by: session.user.id,
-                parent_id: args.parent_id || null,
-              })
-              .select()
-              .single()
-
-            if (error) {
-              toolResult = `Error creating page: ${error.message}`
-            } else {
-              toolResult = `Successfully created page "${newPage.title}" with ID: ${newPage.id}`
-              lastActionData = { type: 'page_created', pageId: newPage.id, title: newPage.title }
-            }
+              .insert({ workspace_id: workspaceId, title: args.title || 'Untitled', icon: args.icon || getDefaultIcon(args.title || ''), content: blocks, created_by: session.user.id, parent_id: args.parent_id || null })
+              .select().single()
+            toolResult = error ? `Error creating page: ${error.message}` : `Created page "${newPage.title}" (id: ${newPage.id})`
+            if (!error) lastActionData = { type: 'page_created', pageId: newPage.id, title: newPage.title }
             break
           }
-
           case 'search_pages': {
-            const { data: results } = await supabaseAdmin
-              .from('pages')
-              .select('id, title, icon, updated_at')
-              .eq('workspace_id', workspaceId)
-              .eq('is_archived', false)
-              .ilike('title', `%${args.query}%`)
-              .limit(8)
-
-            if (!results || results.length === 0) {
-              toolResult = `No pages found matching "${args.query}"`
-            } else {
-              toolResult = `Found ${results.length} page(s):\n${results.map((p) => `- ${p.icon || '📄'} "${p.title}" (id: ${p.id})`).join('\n')}`
-              lastActionData = { type: 'search_results' }
-            }
+            const { data: results } = await supabaseAdmin.from('pages').select('id, title, icon, updated_at').eq('workspace_id', workspaceId).eq('is_archived', false).ilike('title', `%${args.query}%`).limit(8)
+            toolResult = (!results || results.length === 0) ? `No pages found matching "${args.query}"` : `Found ${results.length}: ${results.map((p) => `"${p.title}" (${p.id})`).join(', ')}`
+            if (results?.length) lastActionData = { type: 'search_results' }
             break
           }
-
           case 'get_page_content': {
-            const baseQ = supabaseAdmin
-              .from('pages')
-              .select('id, title, content, icon')
-              .eq('workspace_id', workspaceId)
-
-            const finalQ = args.page_id
-              ? baseQ.eq('id', args.page_id)
-              : baseQ.ilike('title', `%${args.title || ''}%`)
-
-            const { data: pageData } = await finalQ.maybeSingle()
-            if (!pageData) {
-              toolResult = 'Page not found'
-            } else {
-              const text = extractTextFromBlocks(pageData.content)
-              toolResult = `Page: "${pageData.title}"\n\nContent:\n${text.slice(0, 2000)}`
-            }
+            const baseQ = supabaseAdmin.from('pages').select('id, title, content, icon').eq('workspace_id', workspaceId)
+            const { data: pageData } = await (args.page_id ? baseQ.eq('id', args.page_id) : baseQ.ilike('title', `%${args.title || ''}%`)).maybeSingle()
+            toolResult = !pageData ? 'Page not found' : `Page: "${pageData.title}"\n\n${extractTextFromBlocks(pageData.content).slice(0, 2000)}`
             break
           }
-
           case 'update_page_content': {
             const blocks = args.content ? parseMarkdownToBlocks(args.content) : null
-            const { error } = await supabaseAdmin
-              .from('pages')
-              // @ts-ignore
-              .update({ content: blocks, updated_at: new Date().toISOString() })
-              .eq('id', args.page_id)
-              .eq('workspace_id', workspaceId)
-
-            toolResult = error
-              ? `Error updating page: ${error.message}`
-              : `Updated content of page ${args.page_id}`
-            lastActionData = { type: 'page_updated', pageId: args.page_id }
+            // @ts-ignore
+            const { error } = await supabaseAdmin.from('pages').update({ content: blocks, updated_at: new Date().toISOString() }).eq('id', args.page_id).eq('workspace_id', workspaceId)
+            toolResult = error ? `Error: ${error.message}` : `Updated page ${args.page_id}`
+            if (!error) lastActionData = { type: 'page_updated', pageId: args.page_id }
             break
           }
-
           case 'update_page_title': {
-            const { error } = await supabaseAdmin
-              .from('pages')
-              // @ts-ignore
-              .update({ title: args.new_title, updated_at: new Date().toISOString() })
-              .eq('id', args.page_id)
-              .eq('workspace_id', workspaceId)
-
-            toolResult = error
-              ? `Error renaming page: ${error.message}`
-              : `Renamed page to "${args.new_title}"`
-            lastActionData = { type: 'page_updated', pageId: args.page_id }
+            // @ts-ignore
+            const { error } = await supabaseAdmin.from('pages').update({ title: args.new_title, updated_at: new Date().toISOString() }).eq('id', args.page_id).eq('workspace_id', workspaceId)
+            toolResult = error ? `Error: ${error.message}` : `Renamed to "${args.new_title}"`
+            if (!error) lastActionData = { type: 'page_updated', pageId: args.page_id }
             break
           }
-
           case 'list_pages': {
             const allPages = pages || []
-            toolResult = allPages.length === 0
-              ? 'No pages in workspace yet.'
-              : `${allPages.length} page(s):\n${allPages.map((p) => `- ${p.icon || '📄'} "${p.title}" (id: ${p.id})`).join('\n')}`
+            toolResult = allPages.length === 0 ? 'No pages yet.' : `${allPages.length} pages:\n${allPages.map((p) => `- ${p.icon || '📄'} "${p.title}" (${p.id})`).join('\n')}`
             break
           }
-
           default:
             toolResult = `Unknown tool: ${fnName}`
         }
 
-        groqMessages.push({
-          role: 'tool',
-          tool_call_id: toolCall.id,
-          content: toolResult,
-        })
+        groqMessages.push({ role: 'tool', tool_call_id: toolCall.id, content: toolResult })
       }
     }
 
-    return NextResponse.json({
-      content: 'Actions completed! Let me know if you need anything else.',
-      action: lastActionData,
-    })
+    return NextResponse.json({ content: 'Actions completed! Let me know if you need anything else.', action: lastActionData })
   } catch (error: unknown) {
     console.error('AI API error:', error)
-    const err = error as { message?: string; status?: number; error?: { type?: string } }
+    const err = error as { message?: string; status?: number }
     const msg = err.message || ''
-    if (msg.includes('Rate limit') || msg.includes('rate_limit') || (err as { status?: number }).status === 429) {
-      return NextResponse.json(
-        { error: 'Rate limit reached — please wait a moment and try again.' },
-        { status: 429 }
-      )
+    if (msg.includes('Rate limit') || msg.includes('rate_limit') || err.status === 429) {
+      return NextResponse.json({ error: 'Rate limit reached — please wait a moment.' }, { status: 429 })
     }
     return NextResponse.json({ error: msg || 'AI request failed' }, { status: 500 })
   }
 }
 
 function parseMarkdownToBlocks(markdown: string) {
-  const lines = markdown.split('\n').filter((l) => l.trim())
-  return lines.map((line, i) => {
-    let type = 'paragraph'
-    let text = line
-    let level = 1
-
+  return markdown.split('\n').filter((l) => l.trim()).map((line, i) => {
+    let type = 'paragraph', text = line, level = 1
     if (line.startsWith('### ')) { type = 'heading'; level = 3; text = line.slice(4) }
     else if (line.startsWith('## ')) { type = 'heading'; level = 2; text = line.slice(3) }
     else if (line.startsWith('# ')) { type = 'heading'; level = 1; text = line.slice(2) }
@@ -249,35 +243,8 @@ function parseMarkdownToBlocks(markdown: string) {
     else if (line.startsWith('- ') || line.startsWith('* ')) { type = 'bulletListItem'; text = line.slice(2) }
     else if (line.match(/^\d+\. /)) { type = 'numberedListItem'; text = line.replace(/^\d+\. /, '') }
     else if (line.startsWith('> ')) { type = 'quote'; text = line.slice(2) }
-
-    return {
-      id: `ai-block-${i}`,
-      type,
-      props: {
-        textColor: 'default',
-        backgroundColor: 'default',
-        textAlignment: 'left',
-        ...(type === 'heading' ? { level } : {}),
-      },
-      content: [{ type: 'text', text: text.trim(), styles: {} }],
-      children: [],
-    }
+    return { id: `ai-block-${i}`, type, props: { textColor: 'default', backgroundColor: 'default', textAlignment: 'left', ...(type === 'heading' ? { level } : {}) }, content: [{ type: 'text', text: text.trim(), styles: {} }], children: [] }
   })
-}
-
-function extractTextFromBlocks(content: unknown): string {
-  if (!content || !Array.isArray(content)) return ''
-  try {
-    const texts: string[] = []
-    const extract = (blocks: Array<{ content?: Array<{ text?: string }>; children?: unknown[] }>) => {
-      for (const block of blocks) {
-        if (block.content) for (const inline of block.content) if (inline.text) texts.push(inline.text)
-        if (block.children && Array.isArray(block.children)) extract(block.children as typeof blocks)
-      }
-    }
-    extract(content as Parameters<typeof extract>[0])
-    return texts.join(' ')
-  } catch { return '' }
 }
 
 function getDefaultIcon(title: string): string {
@@ -292,6 +259,5 @@ function getDefaultIcon(title: string): string {
   if (t.includes('code') || t.includes('dev')) return '💻'
   if (t.includes('research')) return '🔬'
   if (t.includes('finance') || t.includes('budget')) return '💰'
-  if (t.includes('journal') || t.includes('diary')) return '📔'
   return '📄'
 }
