@@ -65,9 +65,35 @@ async function extractText(buffer: ArrayBuffer, mimeType: string, filename: stri
     }
   }
 
-  // Image — return a descriptive placeholder (OCR would require external service)
+  // Image — use Groq vision to OCR and describe the image
   if (mimeType.startsWith('image/')) {
-    return `[IMAGE FILE: ${filename}]\nFile type: ${mimeType}\nSize: ${Math.round(buffer.byteLength / 1024)} KB\nNote: Image content requires visual analysis. Use the chat to ask questions about this image.`
+    try {
+      const GroqSDK = (await import('groq-sdk')).default
+      const groq = new GroqSDK({ apiKey: process.env.GROQ_API_KEY })
+      const base64 = Buffer.from(bytes).toString('base64')
+      const dataUrl = `data:${mimeType};base64,${base64}`
+      const response = await groq.chat.completions.create({
+        model: 'meta-llama/llama-4-scout-17b-16e-instruct',
+        max_tokens: 1024,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'image_url', image_url: { url: dataUrl } },
+              { type: 'text', text: 'Extract ALL text visible in this image verbatim (OCR). Then provide a thorough description of the image content, layout, diagrams, charts, tables, or any visual elements. Be detailed and structured.' },
+            ],
+          },
+        ],
+      })
+      const result = response.choices[0]?.message?.content || ''
+      return `[IMAGE: ${filename}]
+
+${result}`
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Vision extraction failed'
+      return `[IMAGE FILE: ${filename}]
+Vision extraction failed: ${msg}`
+    }
   }
 
   return `[FILE: ${filename} — type: ${mimeType}, size: ${Math.round(buffer.byteLength / 1024)} KB]`
