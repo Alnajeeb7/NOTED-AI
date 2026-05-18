@@ -134,11 +134,13 @@ export function AiPanel({ workspaceId, width = 320, onClose }: AiPanelProps) {
   const readFileAsText = (file: File): Promise<string> =>
     new Promise((resolve) => {
       const reader = new FileReader()
-      reader.onload = () => resolve(reader.result as string)
       reader.onerror = () => resolve(`[Could not read file: ${file.name}]`)
       if (file.type.startsWith('image/')) {
-        resolve(`[IMAGE: ${file.name} (${file.type}, ${Math.round(file.size / 1024)} KB) — describe or analyze this image]`)
+        // Read as base64 data URL so the AI can actually see the image
+        reader.onload = () => resolve(reader.result as string)
+        reader.readAsDataURL(file)
       } else {
+        reader.onload = () => resolve(reader.result as string)
         reader.readAsText(file)
       }
     })
