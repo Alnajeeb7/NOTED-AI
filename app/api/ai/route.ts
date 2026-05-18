@@ -75,10 +75,12 @@ export async function POST(req: NextRequest) {
         content: item.extracted_text.slice(0, 3000), metadata: { fileId: item.id },
       }] : []
     )
-    const attachedChunks: KBChunk[] = (attachedFiles || []).map((f, i) => ({
-      id: `attached-${i}`, source: f.name, sourceType: 'kb_file' as const,
-      content: f.content.slice(0, 3000), metadata: {},
-    }))
+    const attachedChunks: KBChunk[] = (attachedFiles || [])
+      .filter((f) => !f.type.startsWith('image/'))
+      .map((f, i) => ({
+        id: `attached-${i}`, source: f.name, sourceType: 'kb_file' as const,
+        content: f.content.slice(0, 3000), metadata: {},
+      }))
     const allChunks = [...pageChunks, ...kbChunks, ...attachedChunks]
 
     // ── 4. RAG retrieval ─────────────────────────────────────────────────────
@@ -120,16 +122,40 @@ ${STRUCTURED_RESPONSE_FORMAT}
 
 IMPORTANT: When the user asks to create, update, search, or list pages — ALWAYS use the available tools.`
 
+    // ── 7. Agentic loop ──────────────────────────────────────────────────────
+    const imageFiles = (attachedFiles || []).filter((f) => f.type.startsWith('image/'))
+
+    // Build the final user message — multimodal if images are attached
+    type ContentBlock =
+      | { type: 'text'; text: string }
+      | { type: 'image_url'; image_url: { url: string } }
+
+    const finalUserContent: ContentBlock[] = [{ type: 'text', text: userQuery }]
+    for (const img of imageFiles) {
+      // content is a base64 data URL like "data:image/png;base64,..."
+      if (img.content.startsWith('data:')) {
+        finalUserContent.push({ type: 'image_url', image_url: { url: img.content } })
+      }
+    }
+
     const groqMessages: Groq.Chat.ChatCompletionMessageParam[] = [
       { role: 'system', content: systemContent },
       ...messages.slice(0, -1).map((m) => ({
         role: m.role as 'user' | 'assistant', content: m.content,
       })),
-      { role: 'user' as const, content: userQuery },
+      {
+        role: 'user' as const,
+        content: finalUserContent.length === 1 ? userQuery : (finalUserContent as Groq.Chat.ChatCompletionContentPart[]),
+      },
     ]
 
-    // ── 7. Agentic loop ──────────────────────────────────────────────────────
-    const modelConfig = GROQ_MODELS.find((m) => m.id === model)
+    let activeModel = model
+    // Auto-switch to a vision-capable model if images are present
+    if (imageFiles.length > 0) {
+      const visionModel = GROQ_MODELS.find((m) => (m as { supportsVision?: boolean }).supportsVision)
+      if (visionModel && visionModel.id !== model) activeModel = visionModel.id as GroqModelId
+    }
+    const modelConfig = GROQ_MODELS.find((m) => m.id === activeModel)
     const supportsTools = modelConfig?.supportsTools !== false
     let lastActionData: { type: string; pageId?: string; title?: string } | null = null
     let loopCount = 0
@@ -139,7 +165,7 @@ IMPORTANT: When the user asks to create, update, search, or list pages — ALWAY
       loopCount++
       const groq = getGroqClient(userApiKey)
       const response = await groq.chat.completions.create({
-        model, messages: groqMessages,
+        model: activeModel, messages: groqMessages,
         ...(supportsTools ? { tools: AGENT_TOOLS, tool_choice: 'auto' as const } : {}),
         max_tokens: 2048, temperature: 0.3,
       })
