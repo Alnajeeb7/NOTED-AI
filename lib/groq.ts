@@ -1,9 +1,9 @@
 import Groq from 'groq-sdk'
 type Tool = Groq.Chat.Completions.ChatCompletionTool
 
-export const getGroqClient = () => {
+export const getGroqClient = (userApiKey?: string | null) => {
   return new Groq({
-    apiKey: process.env.GROQ_API_KEY,
+    apiKey: userApiKey || process.env.GROQ_API_KEY,
   })
 }
 
