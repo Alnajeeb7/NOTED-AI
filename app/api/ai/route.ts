@@ -191,10 +191,34 @@ IMPORTANT: When the user asks to create, update, search, or list pages — ALWAY
       if (!hasValidToolCalls && assistantMessage.tool_calls?.length) {
         // Broken tool call — don't push to history, return error message
         return NextResponse.json({
-          content: 'The AI tried to perform an action but the request was malformed. Please rephrase and try again.',
+          content: 'The AI tried to perform an action but the response was too large or malformed. Try asking it to summarize the content instead of inserting it verbatim.',
           action: null,
           sourcesUsed: [],
         })
+      }
+
+      // If no structured tool_calls but content has <function=...> fallback format, parse it manually
+      if ((!assistantMessage.tool_calls || assistantMessage.tool_calls.length === 0) && assistantMessage.content) {
+        const funcMatch = assistantMessage.content.match(/<function=([\w]+)>([\s\S]*?)(?:<\/function>|$)/)
+        if (funcMatch) {
+          const fnName = funcMatch[1]
+          const rawArgs = funcMatch[2].trim()
+          let parsedArgs: Record<string, string> = {}
+          try { parsedArgs = JSON.parse(rawArgs) } catch { /* skip */ }
+          if (fnName && Object.keys(parsedArgs).length > 0) {
+            // Strip code fences from content arg
+            if (parsedArgs.content) {
+              parsedArgs.content = parsedArgs.content.replace(/^\s*\`\`\`[\w]*\n?/gm, '').replace(/\n?\`\`\`\s*$/gm, '').trim()
+            }
+            // Re-inject as a synthetic tool call
+            ;(assistantMessage as Record<string, unknown>).tool_calls = [{
+              id: \`synthetic-\${Date.now()}\`,
+              type: 'function',
+              function: { name: fnName, arguments: JSON.stringify(parsedArgs) },
+            }]
+            ;(assistantMessage as Record<string, unknown>).content = null
+          }
+        }
       }
 
       groqMessages.push(assistantMessage)
@@ -219,6 +243,11 @@ IMPORTANT: When the user asks to create, update, search, or list pages — ALWAY
         let args: Record<string, string> = {}
         try { args = JSON.parse(toolCall.function.arguments) } catch { /* empty */ }
         let toolResult = ''
+
+        // Strip triple backtick code fences from content args (model sometimes wraps content in them)
+        if (args.content) {
+          args.content = args.content.replace(/^\s*```[\w]*\n?/gm, '').replace(/\n?```\s*$/gm, '').trim()
+        }
 
         switch (fnName) {
           case 'create_page': {
