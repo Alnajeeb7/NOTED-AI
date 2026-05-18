@@ -167,11 +167,36 @@ IMPORTANT: When the user asks to create, update, search, or list pages — ALWAY
       const response = await groq.chat.completions.create({
         model: activeModel, messages: groqMessages,
         ...(supportsTools ? { tools: AGENT_TOOLS, tool_choice: 'auto' as const } : {}),
-        max_tokens: 2048, temperature: 0.3,
+        max_tokens: 4096, temperature: 0.3,
       })
 
       const choice = response.choices[0]
       const assistantMessage = choice.message
+
+      // Validate finish reason — if generation failed/truncated, bail early
+      if (choice.finish_reason === 'error' || choice.finish_reason === 'length') {
+        return NextResponse.json({
+          content: 'The response was too long or an error occurred. Please try a shorter request.',
+          action: lastActionData,
+          sourcesUsed: [],
+        })
+      }
+
+      // Validate tool_calls — skip push if any have empty/broken arguments
+      const hasValidToolCalls = assistantMessage.tool_calls && assistantMessage.tool_calls.length > 0 &&
+        assistantMessage.tool_calls.every((tc) => {
+          try { JSON.parse(tc.function.arguments); return true } catch { return false }
+        })
+
+      if (!hasValidToolCalls && assistantMessage.tool_calls?.length) {
+        // Broken tool call — don't push to history, return error message
+        return NextResponse.json({
+          content: 'The AI tried to perform an action but the request was malformed. Please rephrase and try again.',
+          action: null,
+          sourcesUsed: [],
+        })
+      }
+
       groqMessages.push(assistantMessage)
 
       if (!assistantMessage.tool_calls || assistantMessage.tool_calls.length === 0) {
@@ -220,7 +245,9 @@ IMPORTANT: When the user asks to create, update, search, or list pages — ALWAY
             break
           }
           case 'update_page_content': {
-            const blocks = args.content ? parseMarkdownToBlocks(args.content) : null
+            // Truncate very large content to prevent Supabase/Groq payload issues
+            const safeContent = args.content ? args.content.slice(0, 8000) : ''
+            const blocks = safeContent ? parseMarkdownToBlocks(safeContent) : null
             // @ts-ignore
             const { error } = await supabaseAdmin.from('pages').update({ content: blocks, updated_at: new Date().toISOString() }).eq('id', args.page_id).eq('workspace_id', workspaceId)
             toolResult = error ? `Error: ${error.message}` : `Updated page ${args.page_id}`
