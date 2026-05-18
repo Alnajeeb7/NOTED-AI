@@ -208,11 +208,11 @@ IMPORTANT: When the user asks to create, update, search, or list pages — ALWAY
           if (fnName && Object.keys(parsedArgs).length > 0) {
             // Strip code fences from content arg
             if (parsedArgs.content) {
-              parsedArgs.content = parsedArgs.content.replace(/^\s*\`\`\`[\w]*\n?/gm, '').replace(/\n?\`\`\`\s*$/gm, '').trim()
+              parsedArgs.content = parsedArgs.content.replace(/^\s*```[\w]*\n?/gm, '').replace(/\n?```\s*$/gm, '').trim()
             }
             // Re-inject as a synthetic tool call
             ;(assistantMessage as Record<string, unknown>).tool_calls = [{
-              id: \`synthetic-\${Date.now()}\`,
+              id: `synthetic-${Date.now()}`,
               type: 'function',
               function: { name: fnName, arguments: JSON.stringify(parsedArgs) },
             }]
