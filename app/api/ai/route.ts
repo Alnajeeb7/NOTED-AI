@@ -120,7 +120,14 @@ ${getAntiHallucinationRules(relevantChunks.length > 0)}
 
 ${STRUCTURED_RESPONSE_FORMAT}
 
-IMPORTANT: When the user asks to create, update, search, or list pages — ALWAYS use the available tools.`
+IMPORTANT: When the user asks to create, update, search, or list pages — ALWAYS use the available tools.
+
+CRITICAL TOOL USAGE RULES:
+- When calling update_page_content or create_page, the "content" argument must be SHORT markdown ONLY (max 800 chars).
+- NEVER put explanations, analysis, or commentary inside the "content" argument — that goes in your chat reply AFTER the tool call.
+- NEVER wrap content in triple backticks inside the content argument.
+- If the content would be long, summarize it or split into key bullet points instead.
+- Write the page content first, then explain what you did in your text response.`
 
     // ── 7. Agentic loop ──────────────────────────────────────────────────────
     const imageFiles = (attachedFiles || []).filter((f) => f.type.startsWith('image/'))
@@ -244,9 +251,13 @@ IMPORTANT: When the user asks to create, update, search, or list pages — ALWAY
         try { args = JSON.parse(toolCall.function.arguments) } catch { /* empty */ }
         let toolResult = ''
 
-        // Strip triple backtick code fences from content args (model sometimes wraps content in them)
+        // Sanitize content arg — strip code fences and hard-cap length
         if (args.content) {
-          args.content = args.content.replace(/^\s*```[\w]*\n?/gm, '').replace(/\n?```\s*$/gm, '').trim()
+          args.content = args.content
+            .replace(/^\s*```[\w]*\n?/gm, '')
+            .replace(/\n?```\s*$/gm, '')
+            .trim()
+            .slice(0, 3000)
         }
 
         switch (fnName) {
