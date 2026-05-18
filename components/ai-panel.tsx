@@ -1,7 +1,11 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
-import { X, Bot, Send, Loader2, RotateCcw, ChevronRight, ChevronDown, Zap, AlertTriangle, Check, Brain, BarChart3, Key } from 'lucide-react'
+import { useState, useRef, useEffect, useCallback } from 'react'
+import {
+  X, Bot, Send, Loader2, RotateCcw, ChevronRight, ChevronDown, Zap,
+  AlertTriangle, Check, Brain, BarChart3, Key, Paperclip, Database,
+  FileText, Image as ImageIcon, X as XIcon, Info,
+} from 'lucide-react'
 import { useAppStore } from '@/lib/store'
 import { useRouter } from 'next/navigation'
 import { getPageUrl } from '@/lib/utils'
@@ -31,6 +35,23 @@ const MODE_BADGE: Record<string, { label: string; color: string }> = {
   explore: { label: '🔭 Explore', color: 'text-emerald-500 bg-emerald-500/10 border-emerald-500/20' },
 }
 
+interface AttachedFile {
+  id: string
+  name: string
+  type: string
+  content: string   // extracted text
+  size: number
+  isImage: boolean
+}
+
+interface KBItem {
+  id: string
+  name: string
+  file_type: string
+  extracted_text: string
+  created_at?: string
+}
+
 interface AiPanelProps {
   workspaceId: string
   width?: number
@@ -53,23 +74,30 @@ export function AiPanel({ workspaceId, width = 320, onClose }: AiPanelProps) {
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [modelOpen, setModelOpen] = useState(false)
+  const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([])
+  const [kbItems, setKbItems] = useState<KBItem[]>([])
+  const [kbOpen, setKbOpen] = useState(false)
+  const [kbLoading, setKbLoading] = useState(false)
+  const [uploadingFile, setUploadingFile] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const kbFileInputRef = useRef<HTMLInputElement>(null)
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [aiMessages, loading])
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [aiMessages, loading])
+  useEffect(() => { inputRef.current?.focus() }, [])
 
+  // Load KB items on mount
   useEffect(() => {
-    inputRef.current?.focus()
-  }, [])
+    loadKBItems()
+  }, [workspaceId])
 
   // Auto-clear rate limits
   useEffect(() => {
     const interval = setInterval(() => {
       const now = Date.now()
       Object.entries(rateLimitedModels).forEach(([id, ts]) => {
-        if (now - ts > RATE_LIMIT_COOLDOWN_MS) clearModelRateLimit(id)
+        if (now - (ts as number) > RATE_LIMIT_COOLDOWN_MS) clearModelRateLimit(id)
       })
     }, 5000)
     return () => clearInterval(interval)
@@ -77,9 +105,19 @@ export function AiPanel({ workspaceId, width = 320, onClose }: AiPanelProps) {
 
   const isRateLimited = (id: string) => !!rateLimitedModels[id]
   const getRateLimitSecondsLeft = (id: string) => {
-    const ts = rateLimitedModels[id]
+    const ts = rateLimitedModels[id] as number | undefined
     if (!ts) return 0
     return Math.ceil((RATE_LIMIT_COOLDOWN_MS - (Date.now() - ts)) / 1000)
+  }
+
+  const loadKBItems = async () => {
+    try {
+      const res = await fetch(`/api/knowledge-base?workspaceId=${workspaceId}`)
+      if (res.ok) {
+        const data = await res.json()
+        setKbItems(data.items || [])
+      }
+    } catch { /* ignore */ }
   }
 
   const refreshPages = async () => {
@@ -92,6 +130,95 @@ export function AiPanel({ workspaceId, width = 320, onClose }: AiPanelProps) {
     } catch { /* ignore */ }
   }
 
+  // ── File reading helper ────────────────────────────────────────────────────
+  const readFileAsText = (file: File): Promise<string> =>
+    new Promise((resolve) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(reader.result as string)
+      reader.onerror = () => resolve(`[Could not read file: ${file.name}]`)
+      if (file.type.startsWith('image/')) {
+        resolve(`[IMAGE: ${file.name} (${file.type}, ${Math.round(file.size / 1024)} KB) — describe or analyze this image]`)
+      } else {
+        reader.readAsText(file)
+      }
+    })
+
+  // ── Attach file directly in chat ───────────────────────────────────────────
+  const handleAttachFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || [])
+    if (!files.length) return
+
+    for (const file of files) {
+      if (file.size > 10 * 1024 * 1024) {
+        toast.error(`${file.name} is too large (max 10 MB)`)
+        continue
+      }
+      const content = await readFileAsText(file)
+      setAttachedFiles((prev) => [
+        ...prev,
+        {
+          id: `${Date.now()}-${file.name}`,
+          name: file.name,
+          type: file.type,
+          content,
+          size: file.size,
+          isImage: file.type.startsWith('image/'),
+        },
+      ])
+    }
+    e.target.value = ''
+  }
+
+  // ── Upload to Knowledge Base ───────────────────────────────────────────────
+  const handleKBUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || [])
+    if (!files.length) return
+    setUploadingFile(true)
+
+    for (const file of files) {
+      try {
+        const formData = new FormData()
+        formData.append('file', file)
+        formData.append('workspaceId', workspaceId)
+        formData.append('name', file.name)
+
+        const res = await fetch('/api/knowledge-base', { method: 'POST', body: formData })
+        const data = await res.json()
+
+        if (data.success) {
+          toast.success(`Added "${file.name}" to Knowledge Base`)
+          // Add to local state immediately for in-session use
+          const newItem: KBItem = {
+            id: data.id,
+            name: data.name || file.name,
+            file_type: file.type,
+            extracted_text: data.extractedText || '',
+            created_at: new Date().toISOString(),
+          }
+          setKbItems((prev) => [newItem, ...prev])
+        } else {
+          toast.error(data.error || `Failed to upload ${file.name}`)
+        }
+      } catch {
+        toast.error(`Upload failed for ${file.name}`)
+      }
+    }
+    setUploadingFile(false)
+    e.target.value = ''
+  }
+
+  const removeAttachedFile = (id: string) => {
+    setAttachedFiles((prev) => prev.filter((f) => f.id !== id))
+  }
+
+  const removeKBItem = async (id: string) => {
+    setKbItems((prev) => prev.filter((k) => k.id !== id))
+    try {
+      await fetch(`/api/knowledge-base?id=${id}`, { method: 'DELETE' })
+    } catch { /* ignore */ }
+  }
+
+  // ── Send message ───────────────────────────────────────────────────────────
   const sendMessage = async (overrideText?: string) => {
     const text = (overrideText || input).trim()
     if (!text || loading) return
@@ -112,20 +239,22 @@ export function AiPanel({ workspaceId, width = 320, onClose }: AiPanelProps) {
     const userMsg: AIMessage = {
       id: `${Date.now()}-user`,
       role: 'user',
-      content: text,
+      content: attachedFiles.length
+        ? `${text}\n\n[Attached files: ${attachedFiles.map((f) => f.name).join(', ')}]`
+        : text,
       timestamp: new Date().toISOString(),
       mode: aiMode,
     }
     addAiMessage(userMsg)
+    const filesForSend = [...attachedFiles]
+    setAttachedFiles([])
     setInput('')
     setLoading(true)
     incrementSessionMessages()
 
     try {
-      // Determine endpoint based on mode
       const endpoint = aiMode === 'chat' ? '/api/ai' : '/api/ai-modes'
 
-      // Get user API key if set
       let userKeyValue: string | null = null
       if (apiKeySource === 'user' && activeUserKeyId) {
         userKeyValue = sessionStorage.getItem(`apikey_${activeUserKeyId}`)
@@ -138,6 +267,18 @@ export function AiPanel({ workspaceId, width = 320, onClose }: AiPanelProps) {
         model: modelToUse,
         mode: aiMode,
         memory: userMemory || undefined,
+        // RAG: pass KB items and attached files
+        kbItems: kbItems.map((k) => ({
+          id: k.id,
+          name: k.name,
+          extracted_text: k.extracted_text,
+          file_type: k.file_type,
+        })),
+        attachedFiles: filesForSend.map((f) => ({
+          name: f.name,
+          type: f.type,
+          content: f.content,
+        })),
       }
       if (userKeyValue) body.userApiKey = userKeyValue
 
@@ -153,9 +294,7 @@ export function AiPanel({ workspaceId, width = 320, onClose }: AiPanelProps) {
         setModelRateLimited(modelToUse)
         const fallback = GROQ_MODELS.find((m) => !isRateLimited(m.id) && m.id !== modelToUse)
         toast.error(
-          fallback
-            ? `Rate-limited. Switch to ${fallback.name}?`
-            : 'All models rate-limited. Wait ~60s.',
+          fallback ? `Rate-limited. Switch to ${fallback.name}?` : 'All models rate-limited. Wait ~60s.',
           { duration: 5000 }
         )
         return
@@ -170,10 +309,10 @@ export function AiPanel({ workspaceId, width = 320, onClose }: AiPanelProps) {
         timestamp: new Date().toISOString(),
         action: data.action,
         mode: aiMode,
+        // @ts-ignore — extended field for source display
+        sourcesUsed: data.sourcesUsed,
       }
       addAiMessage(assistantMsg)
-
-      // Update interaction count in memory
       updateUserMemory({ interactionCount: (userMemory?.interactionCount || 0) + 1 })
 
       if (data.action) {
@@ -202,7 +341,11 @@ export function AiPanel({ workspaceId, width = 320, onClose }: AiPanelProps) {
   }
 
   const currentModel = GROQ_MODELS.find((m) => m.id === selectedModel) ?? GROQ_MODELS[0]
-  const modeBadge = MODE_BADGE[aiMode]
+
+  const getFileIcon = (type: string) => {
+    if (type.startsWith('image/')) return <ImageIcon className="w-3 h-3" />
+    return <FileText className="w-3 h-3" />
+  }
 
   return (
     <>
@@ -215,48 +358,92 @@ export function AiPanel({ workspaceId, width = 320, onClose }: AiPanelProps) {
           <Bot className="w-4 h-4 text-foreground" />
           <span className="text-sm font-semibold flex-1">AI Assistant</span>
 
-          {/* API source indicator */}
           {apiKeySource === 'user' && (
             <span className="text-[9px] px-1.5 py-0.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 text-emerald-600 font-medium">
               YOUR KEY
             </span>
           )}
 
-          <button
-            onClick={() => setAnalyticsOpen(true)}
-            className="p-1.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
-            title="Learning Analytics"
+          <button onClick={() => setKbOpen((v) => !v)}
+            className={cn('p-1.5 rounded hover:bg-accent transition-colors relative', kbOpen ? 'text-foreground bg-accent' : 'text-muted-foreground hover:text-foreground')}
+            title="Knowledge Base"
           >
+            <Database className="w-3.5 h-3.5" />
+            {kbItems.length > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-emerald-500 rounded-full text-[8px] text-white flex items-center justify-center font-bold">
+                {kbItems.length > 9 ? '9+' : kbItems.length}
+              </span>
+            )}
+          </button>
+          <button onClick={() => setAnalyticsOpen(true)} className="p-1.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors" title="Learning Analytics">
             <BarChart3 className="w-3.5 h-3.5" />
           </button>
-          <button
-            onClick={() => setPersonalizationOpen(true)}
-            className="p-1.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
-            title="Personalize AI"
-          >
+          <button onClick={() => setPersonalizationOpen(true)} className="p-1.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors" title="Personalize AI">
             <Brain className="w-3.5 h-3.5" />
           </button>
-          <button
-            onClick={() => setApiKeyModalOpen(true)}
-            className="p-1.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
-            title="API Keys"
-          >
+          <button onClick={() => setApiKeyModalOpen(true)} className="p-1.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors" title="API Keys">
             <Key className="w-3.5 h-3.5" />
           </button>
-          <button
-            onClick={clearAiMessages}
-            className="p-1.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
-            title="Clear chat"
-          >
+          <button onClick={clearAiMessages} className="p-1.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors" title="Clear chat">
             <RotateCcw className="w-3.5 h-3.5" />
           </button>
-          <button
-            onClick={() => { setAiOpen(false); onClose?.() }}
-            className="p-1.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
-          >
+          <button onClick={() => { setAiOpen(false); onClose?.() }} className="p-1.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors">
             <X className="w-4 h-4" />
           </button>
         </div>
+
+        {/* ── Knowledge Base Panel ── */}
+        {kbOpen && (
+          <div className="border-b border-border bg-muted/40 p-3">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                <Database className="w-3 h-3" /> Knowledge Base
+                <span className="text-[10px] text-muted-foreground font-normal">({kbItems.length} files)</span>
+              </span>
+              <button
+                onClick={() => kbFileInputRef.current?.click()}
+                disabled={uploadingFile}
+                className="text-[10px] px-2 py-0.5 rounded bg-foreground text-background hover:opacity-80 disabled:opacity-50 transition flex items-center gap-1"
+              >
+                {uploadingFile ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : '+'}
+                Add file
+              </button>
+              <input
+                ref={kbFileInputRef}
+                type="file"
+                className="hidden"
+                accept=".pdf,.txt,.md,.csv,.json,image/*"
+                multiple
+                onChange={handleKBUpload}
+              />
+            </div>
+
+            {kbItems.length === 0 ? (
+              <div className="text-center py-3">
+                <p className="text-[10px] text-muted-foreground">No KB files yet.</p>
+                <p className="text-[10px] text-muted-foreground opacity-70">Upload PDFs, notes, or images — AI will use them for every answer.</p>
+              </div>
+            ) : (
+              <div className="space-y-1 max-h-32 overflow-y-auto">
+                {kbItems.map((item) => (
+                  <div key={item.id} className="flex items-center gap-1.5 px-2 py-1 rounded bg-background border border-border/50">
+                    {getFileIcon(item.file_type)}
+                    <span className="text-[10px] flex-1 truncate text-foreground">{item.name}</span>
+                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" title="Active in context" />
+                    <button onClick={() => removeKBItem(item.id)} className="text-muted-foreground hover:text-destructive transition-colors">
+                      <XIcon className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <p className="text-[9px] text-muted-foreground mt-2 opacity-70 flex items-center gap-1">
+              <Info className="w-2.5 h-2.5" />
+              KB files are auto-injected as context for every message
+            </p>
+          </div>
+        )}
 
         {/* ── Modes Panel ── */}
         <AiModesPanel onSuggestionClick={(s) => sendMessage(s)} />
@@ -325,7 +512,13 @@ export function AiPanel({ workspaceId, width = 320, onClose }: AiPanelProps) {
             <div className="text-center py-8 text-muted-foreground">
               <Bot className="w-10 h-10 mx-auto mb-3 opacity-20" />
               <p className="text-sm font-medium mb-1">How can I help?</p>
-              <p className="text-xs opacity-70">Select a mode above to get started.</p>
+              <p className="text-xs opacity-70 mb-2">Select a mode above to get started.</p>
+              {kbItems.length > 0 && (
+                <div className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20">
+                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                  <span className="text-[10px] text-emerald-600 dark:text-emerald-400">{kbItems.length} KB file{kbItems.length > 1 ? 's' : ''} active</span>
+                </div>
+              )}
             </div>
           )}
 
@@ -340,13 +533,24 @@ export function AiPanel({ workspaceId, width = 320, onClose }: AiPanelProps) {
                 'max-w-[85%] rounded-xl px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap',
                 msg.role === 'user' ? 'bg-foreground text-background' : 'bg-muted text-foreground'
               )}>
-                {/* Mode badge on user messages */}
-                {msg.role === 'user' && msg.mode && msg.mode !== 'chat' && (
-                  <span className={cn('inline-block text-[9px] px-1.5 py-0.5 rounded-full border mb-1 mr-auto font-medium', MODE_BADGE[msg.mode]?.color || '')}>
-                    {MODE_BADGE[msg.mode]?.label}
+                {msg.role === 'user' && (msg as any).mode && (msg as any).mode !== 'chat' && (
+                  <span className={cn('inline-block text-[9px] px-1.5 py-0.5 rounded-full border mb-1 mr-auto font-medium', MODE_BADGE[(msg as any).mode]?.color || '')}>
+                    {MODE_BADGE[(msg as any).mode]?.label}
                   </span>
                 )}
                 {msg.content}
+
+                {/* Sources used badge */}
+                {msg.role === 'assistant' && (msg as any).sourcesUsed?.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {(msg as any).sourcesUsed.slice(0, 3).map((s: { source: string; type: string }, i: number) => (
+                      <span key={i} className="inline-flex items-center gap-0.5 text-[9px] px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                        {s.type === 'kb_file' ? '📎' : '📄'} {s.source.slice(0, 20)}{s.source.length > 20 ? '…' : ''}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
                 {msg.action?.type === 'page_created' && msg.action.pageId && (
                   <button
                     onClick={() => router.push(getPageUrl(workspaceId, msg.action!.pageId!))}
@@ -367,6 +571,7 @@ export function AiPanel({ workspaceId, width = 320, onClose }: AiPanelProps) {
               </div>
               <div className="bg-muted rounded-xl px-3 py-2 flex items-center gap-2">
                 <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                {kbItems.length > 0 && <span className="text-[10px] text-emerald-600 dark:text-emerald-400">Searching KB…</span>}
                 {aiMode === 'agentic' && <span className="text-[10px] text-muted-foreground">Executing autonomously…</span>}
                 {aiMode === 'plan' && <span className="text-[10px] text-muted-foreground">Building plan…</span>}
                 {aiMode === 'explore' && <span className="text-[10px] text-muted-foreground">Exploring…</span>}
@@ -376,9 +581,43 @@ export function AiPanel({ workspaceId, width = 320, onClose }: AiPanelProps) {
           <div ref={bottomRef} />
         </div>
 
+        {/* ── Attached Files Preview ── */}
+        {attachedFiles.length > 0 && (
+          <div className="px-3 py-2 border-t border-border bg-muted/30">
+            <div className="flex flex-wrap gap-1.5">
+              {attachedFiles.map((f) => (
+                <div key={f.id} className="flex items-center gap-1 px-2 py-1 rounded-lg bg-background border border-border text-[10px]">
+                  {getFileIcon(f.type)}
+                  <span className="max-w-[80px] truncate text-foreground">{f.name}</span>
+                  <button onClick={() => removeAttachedFile(f.id)} className="text-muted-foreground hover:text-destructive ml-0.5">
+                    <XIcon className="w-2.5 h-2.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* ── Input ── */}
         <div className="p-3 border-t border-border">
           <div className="flex items-end gap-2 bg-muted rounded-xl px-3 py-2">
+            {/* File attach button */}
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="p-1 text-muted-foreground hover:text-foreground transition-colors shrink-0 mb-0.5"
+              title="Attach file to this message"
+            >
+              <Paperclip className="w-3.5 h-3.5" />
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              className="hidden"
+              accept=".pdf,.txt,.md,.csv,.json,image/*"
+              multiple
+              onChange={handleAttachFile}
+            />
+
             <textarea
               ref={inputRef}
               id="ai-input"
@@ -391,6 +630,7 @@ export function AiPanel({ workspaceId, width = 320, onClose }: AiPanelProps) {
                   : aiMode === 'agentic' ? 'Give a goal — I\'ll handle the rest…'
                   : aiMode === 'plan' ? 'Tell me your topics & timeline…'
                   : aiMode === 'explore' ? 'What do you want to explore?'
+                  : kbItems.length > 0 ? `Ask anything — ${kbItems.length} KB file${kbItems.length > 1 ? 's' : ''} active…`
                   : 'Ask Noted AI…'
               }
               rows={1}
@@ -412,25 +652,15 @@ export function AiPanel({ workspaceId, width = 320, onClose }: AiPanelProps) {
             </button>
           </div>
           <p className="text-center text-[10px] text-muted-foreground mt-1.5 opacity-50">
-            {currentModel.name} · {aiMode !== 'chat' ? `${aiMode} mode · ` : ''}Enter ↵ to send
+            {currentModel.name} · {aiMode !== 'chat' ? `${aiMode} mode · ` : ''}{kbItems.length > 0 ? `📎 KB: ${kbItems.length} · ` : ''}Enter ↵ to send
           </p>
         </div>
       </aside>
 
       {/* ── Overlays ── */}
-      <PersonalizationPanel
-        open={personalizationOpen}
-        onClose={() => setPersonalizationOpen(false)}
-        workspaceId={workspaceId}
-      />
-      <LearningAnalytics
-        open={analyticsOpen}
-        onClose={() => setAnalyticsOpen(false)}
-      />
-      <ApiKeysModal
-        open={apiKeyModalOpen}
-        onClose={() => setApiKeyModalOpen(false)}
-      />
+      <PersonalizationPanel open={personalizationOpen} onClose={() => setPersonalizationOpen(false)} workspaceId={workspaceId} />
+      <LearningAnalytics open={analyticsOpen} onClose={() => setAnalyticsOpen(false)} />
+      <ApiKeysModal open={apiKeyModalOpen} onClose={() => setApiKeyModalOpen(false)} />
     </>
   )
 }
