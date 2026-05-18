@@ -120,7 +120,7 @@ ${getAntiHallucinationRules(relevantChunks.length > 0)}
 
 ${STRUCTURED_RESPONSE_FORMAT}
 
-IMPORTANT: When the user asks to create, update, search, or list pages — ALWAYS use the available tools.
+IMPORTANT: When the user explicitly asks to CREATE, SAVE, INSERT, or UPDATE a page — use the available tools. Do NOT call any tool just to answer a question, show code, or describe an image. If the user asks "give me the code" or "describe this image", reply in chat directly — do NOT call update_page_content or create_page unless the user says to save/insert it somewhere.
 
 CRITICAL TOOL USAGE RULES:
 - When calling update_page_content or create_page, the "content" argument must be SHORT markdown ONLY (max 800 chars).
@@ -173,7 +173,7 @@ CRITICAL TOOL USAGE RULES:
       const groq = getGroqClient(userApiKey)
       const response = await groq.chat.completions.create({
         model: activeModel, messages: groqMessages,
-        ...(supportsTools ? { tools: AGENT_TOOLS, tool_choice: 'auto' as const } : {}),
+        ...(supportsTools && imageFiles.length === 0 ? { tools: AGENT_TOOLS, tool_choice: 'auto' as const } : {}),
         max_tokens: 4096, temperature: 0.3,
       })
 
