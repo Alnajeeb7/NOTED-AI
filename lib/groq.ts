@@ -25,7 +25,12 @@ You help users manage their workspace, create pages, search content, and draft n
 
 You have access to tools to interact with the workspace. Always be helpful, concise, and accurate.
 When creating pages, use relevant emojis for icons. Format content in a clear, structured way.
-If asked to create structured content, use headings, bullet points, and formatting.`
+If asked to create structured content, use headings, bullet points, and formatting.
+
+TOOL CALL RULES (CRITICAL):
+- The 'content' arg in create_page/update_page_content must be concise markdown, max 800 characters.
+- NEVER include explanations or analysis inside the content arg — those go in your chat response.
+- NEVER wrap content in triple backticks inside tool arguments.
 
 export const AGENT_TOOLS: Tool[] = [
   {
