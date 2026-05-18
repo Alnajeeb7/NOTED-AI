@@ -211,12 +211,12 @@ IMPORTANT: When the user asks to create, update, search, or list pages — ALWAY
               parsedArgs.content = parsedArgs.content.replace(/^\s*```[\w]*\n?/gm, '').replace(/\n?```\s*$/gm, '').trim()
             }
             // Re-inject as a synthetic tool call
-            ;(assistantMessage as Record<string, unknown>).tool_calls = [{
+            ;(assistantMessage as unknown as Record<string, unknown>).tool_calls = [{
               id: `synthetic-${Date.now()}`,
               type: 'function',
               function: { name: fnName, arguments: JSON.stringify(parsedArgs) },
             }]
-            ;(assistantMessage as Record<string, unknown>).content = null
+            ;(assistantMessage as unknown as Record<string, unknown>).content = null
           }
         }
       }
