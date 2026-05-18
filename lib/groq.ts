@@ -12,7 +12,7 @@ export const MODEL = 'llama-3.3-70b-versatile'
 export const GROQ_MODELS = [
   { id: 'llama-3.3-70b-versatile',                   name: 'Llama 3.3 70B',        desc: 'Best quality, great for complex tasks',    rpm: 30, rpd: 1000,  tag: 'Recommended', speed: 'Medium', supportsTools: true  },
   { id: 'llama-3.1-8b-instant',                      name: 'Llama 3.1 8B Instant', desc: 'Fastest responses, very high daily limit', rpm: 30, rpd: 14400, tag: 'Fast',        speed: 'Fast',   supportsTools: true  },
-  { id: 'meta-llama/llama-4-scout-17b-16e-instruct', name: 'Llama 4 Scout 17B',    desc: 'Balanced speed and quality, new model',    rpm: 30, rpd: 1000,  tag: 'New',         speed: 'Medium', supportsTools: true  },
+  { id: 'meta-llama/llama-4-scout-17b-16e-instruct', name: 'Llama 4 Scout 17B',    desc: 'Balanced speed and quality, new model',    rpm: 30, rpd: 1000,  tag: 'New',         speed: 'Medium', supportsTools: true, supportsVision: true  },
   { id: 'groq/compound-mini',                        name: 'Compound Mini',         desc: 'Reasoning-optimised, lower daily limit',  rpm: 30, rpd: 250,   tag: 'Reasoning',   speed: 'Slow',   supportsTools: false },
   { id: 'moonshotai/kimi-k2-instruct',               name: 'Kimi K2',               desc: 'High requests/min, good for quick tasks', rpm: 60, rpd: 1000,  tag: 'High RPM',    speed: 'Medium', supportsTools: false },
 ] as const
