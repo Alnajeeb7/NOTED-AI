@@ -176,23 +176,13 @@ export function AiPanel({ workspaceId, width = 320, onClose }: AiPanelProps) {
         '- Output ONLY the improved prompt text, no quotes, no explanation, no preamble',
       ].join('\n')
 
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
+      const res = await fetch('/api/enhance', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-20250514',
-          max_tokens: 300,
-          system: sysPrompt,
-          messages: [
-            {
-              role: 'user',
-              content: `Context: ${context || 'No files attached, plain chat mode.'}\nRaw user input: ${raw}\n\nRewrite this into a clear specific prompt:`,
-            }
-          ]
-        })
+        body: JSON.stringify({ raw, context, sysPrompt })
       })
       const data = await res.json()
-      const enhanced = data?.content?.[0]?.text?.trim()
+      const enhanced = data?.enhanced?.trim()
       if (enhanced) {
         setInput(enhanced)
         toast.success('Prompt enhanced ✨', { duration: 1500 })
