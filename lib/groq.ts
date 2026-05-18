@@ -92,12 +92,12 @@ export const AGENT_TOOLS: Tool[] = [
     type: 'function',
     function: {
       name: 'update_page_content',
-      description: 'Write or overwrite the body content of an existing page using markdown',
+      description: 'Write or overwrite the body content of an existing page using markdown. Keep content concise and well-structured. Do NOT include raw code blocks longer than 50 lines.',
       parameters: {
         type: 'object',
         properties: {
           page_id: { type: 'string', description: 'The page ID to update' },
-          content: { type: 'string', description: 'The new markdown content for the page body' },
+          content: { type: 'string', description: 'The new markdown content for the page body. Max ~2000 characters. Summarize long content instead of pasting verbatim.' },
         },
         required: ['page_id', 'content'],
       },
