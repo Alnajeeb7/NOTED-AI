@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import {
-  X, Bot, Send, Loader2, RotateCcw, ChevronRight, ChevronDown, Zap,
+  X, Bot, Send, Loader2, RotateCcw, ChevronRight, ChevronDown, Zap, Wand2,
   AlertTriangle, Check, Brain, BarChart3, Key, Paperclip, Database,
   FileText, Image as ImageIcon, X as XIcon, Info,
 } from 'lucide-react'
@@ -78,6 +78,7 @@ export function AiPanel({ workspaceId, width = 320, onClose }: AiPanelProps) {
   const [kbItems, setKbItems] = useState<KBItem[]>([])
   const [kbOpen, setKbOpen] = useState(false)
   const [kbLoading, setKbLoading] = useState(false)
+  const [enhancing, setEnhancing] = useState(false)
   const [uploadingFile, setUploadingFile] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -144,6 +145,64 @@ export function AiPanel({ workspaceId, width = 320, onClose }: AiPanelProps) {
         reader.readAsText(file)
       }
     })
+
+
+  // ── Prompt enhancer ────────────────────────────────────────────────────────
+  const enhancePrompt = async () => {
+    const raw = input.trim()
+    if (!raw || enhancing) return
+    setEnhancing(true)
+    try {
+      const hasImages = attachedFiles.some((f) => f.isImage)
+      const hasFiles  = attachedFiles.some((f) => !f.isImage)
+
+      const context = [
+        hasImages ? 'The user has attached image file(s).' : '',
+        hasFiles  ? 'The user has attached non-image file(s) (PDF/text/CSV).' : '',
+        kbItems.length > 0 ? `The user has ${kbItems.length} Knowledge Base file(s) active.` : '',
+        aiMode !== 'chat' ? `Current AI mode: ${aiMode}.` : '',
+      ].filter(Boolean).join(' ')
+
+      const sysPrompt = [
+        'You are a prompt engineering expert for an AI note-taking assistant called Noted AI.',
+        'Your job: rewrite the user rough input into a clear, specific, actionable prompt.',
+        'Rules:',
+        '- Keep the user intent 100% intact, do NOT change what they want',
+        '- Make it specific and unambiguous',
+        '- If the user asks for code or text from an image, say explicitly: Look at the attached image and extract all visible code/text exactly as written',
+        '- If KB files are active, reference them: Using the Knowledge Base files...',
+        '- If the user wants to save to a page, say: Save this to my current page: ...',
+        '- Do NOT add things the user did not ask for',
+        '- Output ONLY the improved prompt text, no quotes, no explanation, no preamble',
+      ].join('\n')
+
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 300,
+          system: sysPrompt,
+          messages: [
+            {
+              role: 'user',
+              content: `Context: ${context || 'No files attached, plain chat mode.'}\nRaw user input: ${raw}\n\nRewrite this into a clear specific prompt:`,
+            }
+          ]
+        })
+      })
+      const data = await res.json()
+      const enhanced = data?.content?.[0]?.text?.trim()
+      if (enhanced) {
+        setInput(enhanced)
+        toast.success('Prompt enhanced ✨', { duration: 1500 })
+      }
+    } catch {
+      toast.error('Enhancement failed')
+    } finally {
+      setEnhancing(false)
+    }
+  }
 
   // ── Attach file directly in chat ───────────────────────────────────────────
   const handleAttachFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -619,6 +678,18 @@ export function AiPanel({ workspaceId, width = 320, onClose }: AiPanelProps) {
               multiple
               onChange={handleAttachFile}
             />
+
+            {/* Prompt enhancer button */}
+            <button
+              onClick={enhancePrompt}
+              disabled={!input.trim() || enhancing}
+              className="p-1 text-muted-foreground hover:text-violet-500 transition-colors shrink-0 mb-0.5 disabled:opacity-30"
+              title="Enhance prompt with AI ✨"
+            >
+              {enhancing
+                ? <Loader2 className="w-3.5 h-3.5 animate-spin text-violet-500" />
+                : <Wand2 className="w-3.5 h-3.5" />}
+            </button>
 
             <textarea
               ref={inputRef}
