@@ -30,7 +30,7 @@ If asked to create structured content, use headings, bullet points, and formatti
 TOOL CALL RULES (CRITICAL):
 - The 'content' arg in create_page/update_page_content must be concise markdown, max 800 characters.
 - NEVER include explanations or analysis inside the content arg — those go in your chat response.
-- NEVER wrap content in triple backticks inside tool arguments.
+- NEVER wrap content in triple backticks inside tool arguments.`
 
 export const AGENT_TOOLS: Tool[] = [
   {
