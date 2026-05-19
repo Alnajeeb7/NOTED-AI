@@ -446,7 +446,7 @@ const AI_SKILLS = [
 ]
 
 function AIFormattingToolbar() {
-  const editor = useBlockNoteEditor<typeof schema.blockSpecs, any, any>()
+  const editor = useBlockNoteEditor()
   const [aiOpen, setAiOpen] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
   const [editPrompt, setEditPrompt] = useState('')
