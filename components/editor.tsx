@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { useCreateBlockNote } from '@blocknote/react'
 import { BlockNoteView } from '@blocknote/mantine'
 import '@blocknote/mantine/style.css'
@@ -14,8 +14,17 @@ import {
   createReactBlockSpec,
   getDefaultReactSlashMenuItems,
   SuggestionMenuController,
+  FormattingToolbar,
+  FormattingToolbarController,
+  useComponentsContext,
+  useBlockNoteEditor,
+  useEditorContentOrSelectionChange,
+  useEditorSelectionChange,
 } from '@blocknote/react'
 import type { Block } from '@blocknote/core'
+import toast from 'react-hot-toast'
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function extractYouTubeId(url: string): string | null {
   const patterns = [
@@ -30,6 +39,8 @@ function extractYouTubeId(url: string): string | null {
   }
   return null
 }
+
+// ─── YouTube Block ────────────────────────────────────────────────────────────
 
 const YouTubeBlock = createReactBlockSpec(
   { type: 'youtube' as const, propSchema: { url: { default: '' } }, content: 'none' },
@@ -63,10 +74,7 @@ const YouTubeBlock = createReactBlockSpec(
               onPaste={(e) => {
                 e.stopPropagation()
                 const val = e.clipboardData.getData('text/plain').trim()
-                if (extractYouTubeId(val)) {
-                  e.preventDefault()
-                  submit(val)
-                }
+                if (extractYouTubeId(val)) { e.preventDefault(); submit(val) }
               }}
               onKeyDown={(e) => {
                 e.stopPropagation()
@@ -91,6 +99,8 @@ const YouTubeBlock = createReactBlockSpec(
     toExternalHTML: ({ block }) => <div><a href={block.props.url}>{block.props.url}</a></div>,
   }
 )
+
+// ─── Video Block ──────────────────────────────────────────────────────────────
 
 const VideoBlock = createReactBlockSpec(
   { type: 'video' as const, propSchema: { url: { default: '' }, name: { default: '' } }, content: 'none' },
@@ -134,6 +144,8 @@ const VideoBlock = createReactBlockSpec(
   }
 )
 
+// ─── Schema ───────────────────────────────────────────────────────────────────
+
 const schema = BlockNoteSchema.create({
   blockSpecs: { ...defaultBlockSpecs, youtube: YouTubeBlock, video: VideoBlock },
 })
@@ -163,19 +175,447 @@ const insertVideoItem = (editor: typeof schema.BlockNoteEditor) => ({
 const insertYouTubeItem = (editor: typeof schema.BlockNoteEditor) => ({
   title: 'YouTube',
   subtext: 'Embed a YouTube video',
-  onItemClick: () => {
-    // Insert block with empty URL — inline input will appear
-    insertOrUpdateBlock(editor as any, { type: 'youtube', props: { url: '' } } as any)
-  },
+  onItemClick: () => { insertOrUpdateBlock(editor as any, { type: 'youtube', props: { url: '' } } as any) },
   aliases: ['youtube', 'yt', 'embed'],
   group: 'Media',
   icon: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>,
 })
 
+// ─── AI helper ────────────────────────────────────────────────────────────────
+
+async function callAI(prompt: string, text: string): Promise<string> {
+  const res = await fetch('/api/ai-inline', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt, text }),
+  })
+  if (!res.ok) throw new Error('AI request failed')
+  const data = await res.json()
+  return data.content || ''
+}
+
+// ─── Context Menu ─────────────────────────────────────────────────────────────
+
+interface ContextMenuProps {
+  blockId: string
+  editor: typeof schema.BlockNoteEditor
+  position: { x: number; y: number }
+  onClose: () => void
+}
+
+const TURN_INTO_TYPES = [
+  { label: 'Text',            icon: 'T',  type: 'paragraph'        },
+  { label: 'Heading 1',       icon: 'H₁', type: 'heading', level: 1 },
+  { label: 'Heading 2',       icon: 'H₂', type: 'heading', level: 2 },
+  { label: 'Heading 3',       icon: 'H₃', type: 'heading', level: 3 },
+  { label: 'Bulleted list',   icon: '•',  type: 'bulletListItem'   },
+  { label: 'Numbered list',   icon: '1.', type: 'numberedListItem' },
+  { label: 'To-do list',      icon: '☐',  type: 'checkListItem'    },
+  { label: 'Toggle list',     icon: '▶',  type: 'toggleListItem'   },
+  { label: 'Code',            icon: '</>', type: 'codeBlock'        },
+  { label: 'Quote',           icon: '"',  type: 'quote'            },
+]
+
+const COLORS = [
+  { label: 'Default', color: undefined, bg: undefined },
+  { label: 'Gray',    color: 'gray',    bg: '#374151' },
+  { label: 'Red',     color: 'red',     bg: '#dc2626' },
+  { label: 'Orange',  color: 'orange',  bg: '#ea580c' },
+  { label: 'Yellow',  color: 'yellow',  bg: '#ca8a04' },
+  { label: 'Green',   color: 'green',   bg: '#16a34a' },
+  { label: 'Blue',    color: 'blue',    bg: '#2563eb' },
+  { label: 'Purple',  color: 'purple',  bg: '#9333ea' },
+  { label: 'Pink',    color: 'pink',    bg: '#db2777' },
+]
+
+function BlockContextMenu({ blockId, editor, position, onClose }: ContextMenuProps) {
+  const menuRef = useRef<HTMLDivElement>(null)
+  const [sub, setSub] = useState<'turnInto' | 'color' | null>(null)
+  const [aiLoading, setAiLoading] = useState(false)
+
+  // Close on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) onClose()
+    }
+    const keyHandler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    setTimeout(() => document.addEventListener('mousedown', handler), 0)
+    document.addEventListener('keydown', keyHandler)
+    return () => {
+      document.removeEventListener('mousedown', handler)
+      document.removeEventListener('keydown', keyHandler)
+    }
+  }, [onClose])
+
+  // Clamp position to viewport
+  const style: React.CSSProperties = {
+    position: 'fixed',
+    left: Math.min(position.x, window.innerWidth - 220),
+    top: Math.min(position.y, window.innerHeight - 400),
+    zIndex: 99999,
+  }
+
+  const getBlockText = () => {
+    try {
+      const block = (editor.document as any[]).find((b: any) => b.id === blockId)
+      if (!block) return ''
+      return block.content?.map((c: any) => c.text || '').join('') || ''
+    } catch { return '' }
+  }
+
+  const turnInto = (type: string, level?: number) => {
+    try {
+      if (type === 'heading') {
+        editor.updateBlock(blockId as any, { type: 'heading', props: { level: level || 1 } } as any)
+      } else {
+        editor.updateBlock(blockId as any, { type } as any)
+      }
+    } catch { /* ignore unsupported types */ }
+    onClose()
+  }
+
+  const copyLink = () => {
+    const url = `${window.location.href.split('#')[0]}#block-${blockId}`
+    navigator.clipboard.writeText(url).then(() => toast.success('Link copied!'))
+    onClose()
+  }
+
+  const duplicate = () => {
+    try {
+      const block = (editor.document as any[]).find((b: any) => b.id === blockId)
+      if (block) editor.insertBlocks([{ ...block, id: undefined }] as any, blockId as any, 'after')
+    } catch { }
+    onClose()
+  }
+
+  const deleteBlock = () => {
+    try { editor.removeBlocks([blockId] as any) } catch { }
+    onClose()
+  }
+
+  const askAI = async () => {
+    const text = getBlockText()
+    if (!text) { toast('No text in this block'); onClose(); return }
+    setAiLoading(true)
+    try {
+      const result = await callAI('Improve and enhance this text, keeping the same meaning:', text)
+      editor.updateBlock(blockId as any, {
+        content: [{ type: 'text', text: result, styles: {} }],
+      } as any)
+      toast.success('AI improved the block!')
+    } catch { toast.error('AI request failed') }
+    setAiLoading(false)
+    onClose()
+  }
+
+  const menuItem = (icon: React.ReactNode, label: string, shortcut?: string, onClick?: () => void, danger = false) => (
+    <button
+      key={label}
+      onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); onClick?.() }}
+      className={`w-full flex items-center gap-2.5 px-3 py-1.5 text-left text-[13px] rounded-md transition-colors ${danger ? 'hover:bg-red-500/15 text-red-400' : 'hover:bg-white/8 text-[#e5e5e5]'}`}
+    >
+      <span className="w-4 text-center text-[11px] text-[#888] shrink-0">{icon}</span>
+      <span className="flex-1">{label}</span>
+      {shortcut && <span className="text-[10px] text-[#555] font-mono">{shortcut}</span>}
+    </button>
+  )
+
+  return (
+    <div ref={menuRef} style={style} onMouseDown={(e) => e.stopPropagation()}>
+      <div className="w-52 rounded-xl border border-[#2a2a2a] bg-[#1c1c1c] shadow-2xl shadow-black/60 overflow-hidden py-1.5 text-[13px]">
+
+        {/* Search bar */}
+        <div className="px-3 pb-1.5">
+          <input
+            autoFocus
+            placeholder="Search actions..."
+            className="w-full bg-[#111] border border-[#2a2a2a] rounded-lg px-2.5 py-1.5 text-[12px] text-[#ccc] placeholder-[#444] outline-none"
+            onMouseDown={(e) => e.stopPropagation()}
+          />
+        </div>
+
+        <div className="h-px bg-[#2a2a2a] my-1" />
+
+        {/* Turn into */}
+        <div className="relative">
+          <button
+            onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setSub(sub === 'turnInto' ? null : 'turnInto') }}
+            className="w-full flex items-center gap-2.5 px-3 py-1.5 hover:bg-white/8 text-[#e5e5e5] rounded-md"
+          >
+            <span className="w-4 text-center text-[11px] text-[#888]">↺</span>
+            <span className="flex-1">Turn into</span>
+            <span className="text-[#555] text-xs">›</span>
+          </button>
+          {sub === 'turnInto' && (
+            <div className="absolute left-full top-0 ml-1 w-44 rounded-xl border border-[#2a2a2a] bg-[#1c1c1c] shadow-2xl py-1.5" style={{ zIndex: 100000 }}>
+              {TURN_INTO_TYPES.map((t) => (
+                <button
+                  key={t.label}
+                  onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); turnInto(t.type, (t as any).level) }}
+                  className="w-full flex items-center gap-2.5 px-3 py-1.5 hover:bg-white/8 text-[#e5e5e5] text-[13px] rounded-md"
+                >
+                  <span className="w-5 text-center text-[11px] text-[#888] font-mono">{t.icon}</span>
+                  <span>{t.label}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Color */}
+        <div className="relative">
+          <button
+            onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setSub(sub === 'color' ? null : 'color') }}
+            className="w-full flex items-center gap-2.5 px-3 py-1.5 hover:bg-white/8 text-[#e5e5e5] rounded-md"
+          >
+            <span className="w-4 text-center text-[11px] text-[#888]">A</span>
+            <span className="flex-1">Color</span>
+            <span className="text-[#555] text-xs">›</span>
+          </button>
+          {sub === 'color' && (
+            <div className="absolute left-full top-0 ml-1 w-44 rounded-xl border border-[#2a2a2a] bg-[#1c1c1c] shadow-2xl py-1.5" style={{ zIndex: 100000 }}>
+              <p className="px-3 py-1 text-[10px] text-[#555] uppercase tracking-wider">Text</p>
+              <div className="flex flex-wrap gap-1.5 px-3 pb-2">
+                {COLORS.map((c) => (
+                  <button
+                    key={c.label}
+                    title={c.label}
+                    onMouseDown={(e) => {
+                      e.preventDefault(); e.stopPropagation()
+                      try { editor.updateBlock(blockId as any, { props: { textColor: c.color || 'default' } } as any) } catch { }
+                      onClose()
+                    }}
+                    style={{ width: 20, height: 20, borderRadius: 4, background: c.bg || '#e5e5e5', border: '1.5px solid #333' }}
+                  />
+                ))}
+              </div>
+              <p className="px-3 py-1 text-[10px] text-[#555] uppercase tracking-wider">Background</p>
+              <div className="flex flex-wrap gap-1.5 px-3 pb-2">
+                {COLORS.map((c) => (
+                  <button
+                    key={`bg-${c.label}`}
+                    title={`${c.label} background`}
+                    onMouseDown={(e) => {
+                      e.preventDefault(); e.stopPropagation()
+                      try { editor.updateBlock(blockId as any, { props: { backgroundColor: c.color || 'default' } } as any) } catch { }
+                      onClose()
+                    }}
+                    style={{ width: 20, height: 20, borderRadius: 4, background: c.bg ? `${c.bg}40` : '#e5e5e5', border: `1.5px solid ${c.bg || '#333'}` }}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="h-px bg-[#2a2a2a] my-1" />
+
+        {menuItem('🔗', 'Copy link to block', 'Alt+⇧+L', copyLink)}
+        {menuItem('⧉', 'Duplicate', 'Ctrl+D', duplicate)}
+        {menuItem('→', 'Move to', 'Ctrl+⇧+P', () => { toast('Move to: use drag & drop'); onClose() })}
+        {menuItem('🗑', 'Delete', 'Del', deleteBlock, true)}
+
+        <div className="h-px bg-[#2a2a2a] my-1" />
+
+        {menuItem('💬', 'Comment', 'Ctrl+⇧+M', () => { toast('Comments coming soon'); onClose() })}
+        {menuItem('✏️', 'Suggest edits', 'Ctrl+⇧+Alt+X', () => { toast('Suggest edits coming soon'); onClose() })}
+
+        <div className="h-px bg-[#2a2a2a] my-1" />
+
+        <button
+          onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); askAI() }}
+          disabled={aiLoading}
+          className="w-full flex items-center gap-2.5 px-3 py-1.5 hover:bg-violet-500/15 text-violet-400 rounded-md transition-colors disabled:opacity-50"
+        >
+          <span className="w-4 text-center text-[11px]">✦</span>
+          <span className="flex-1">{aiLoading ? 'AI working…' : 'Ask AI'}</span>
+          <span className="text-[10px] text-[#555] font-mono">Ctrl+J</span>
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ─── AI Formatting Toolbar ─────────────────────────────────────────────────────
+
+const AI_SKILLS = [
+  { label: 'Improve writing', prompt: 'Improve the writing quality of this text, making it clearer and more polished:', icon: '✨' },
+  { label: 'Proofread',       prompt: 'Fix all grammar, spelling, and punctuation errors in this text:', icon: '🔍' },
+  { label: 'Explain',         prompt: 'Provide a clear explanation of this text in simple terms:', icon: '💡', append: true },
+  { label: 'Reformat',        prompt: 'Reformat this text with better structure, using bullet points or headings where appropriate:', icon: '⚙️' },
+]
+
+function AIFormattingToolbar() {
+  const editor = useBlockNoteEditor<typeof schema.blockSpecs, any, any>()
+  const [aiOpen, setAiOpen] = useState(false)
+  const [editOpen, setEditOpen] = useState(false)
+  const [editPrompt, setEditPrompt] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [activeSkill, setActiveSkill] = useState<string | null>(null)
+
+  const getSelectedText = useCallback((): string => {
+    const sel = window.getSelection()
+    return sel?.toString().trim() || ''
+  }, [])
+
+  const replaceSelectedText = useCallback((newText: string) => {
+    try {
+      const sel = window.getSelection()
+      if (!sel || sel.rangeCount === 0) return
+      const range = sel.getRangeAt(0)
+      range.deleteContents()
+      range.insertNode(document.createTextNode(newText))
+      sel.removeAllRanges()
+    } catch {
+      toast.error('Could not replace text')
+    }
+  }, [])
+
+  const runSkill = async (prompt: string, append = false) => {
+    const text = getSelectedText()
+    if (!text) { toast('Select some text first'); return }
+    setLoading(true)
+    setActiveSkill(prompt)
+    try {
+      const result = await callAI(prompt, text)
+      if (append) {
+        // Append explanation after selection
+        const sel = window.getSelection()
+        if (sel && sel.rangeCount > 0) {
+          const range = sel.getRangeAt(0)
+          range.collapse(false)
+          const node = document.createTextNode('\n\n' + result)
+          range.insertNode(node)
+        }
+      } else {
+        replaceSelectedText(result)
+      }
+      toast.success('Done!')
+    } catch { toast.error('AI request failed') }
+    setLoading(false)
+    setActiveSkill(null)
+    setAiOpen(false)
+  }
+
+  const runEditWithAI = async () => {
+    if (!editPrompt.trim()) return
+    const text = getSelectedText()
+    if (!text) { toast('Select some text first'); return }
+    setLoading(true)
+    try {
+      const result = await callAI(editPrompt, text)
+      replaceSelectedText(result)
+      toast.success('Done!')
+    } catch { toast.error('AI request failed') }
+    setLoading(false)
+    setEditOpen(false)
+    setEditPrompt('')
+    setAiOpen(false)
+  }
+
+  return (
+    <div className="flex items-center gap-0.5 relative" onMouseDown={(e) => e.stopPropagation()}>
+      {/* ─── AI Skills Button ─── */}
+      <div className="relative">
+        <button
+          onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setAiOpen((v) => !v); setEditOpen(false) }}
+          disabled={loading}
+          className="flex items-center gap-1 px-2 py-1 rounded-md text-[12px] font-medium text-violet-400 hover:bg-violet-500/15 transition-colors disabled:opacity-50"
+          title="AI Skills"
+        >
+          <span className="text-[11px]">✦</span>
+          <span>{loading ? activeSkill?.split(' ')[0] + '…' : 'Skills'}</span>
+          {loading && (
+            <svg className="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+            </svg>
+          )}
+        </button>
+
+        {aiOpen && !loading && (
+          <div
+            className="absolute bottom-full left-0 mb-1 w-48 rounded-xl border border-[#2a2a2a] bg-[#1c1c1c] shadow-2xl py-1.5 text-[13px]"
+            style={{ zIndex: 99999 }}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <p className="px-3 py-1 text-[10px] text-[#555] uppercase tracking-wider">Skills</p>
+            {AI_SKILLS.map((skill) => (
+              <button
+                key={skill.label}
+                onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); runSkill(skill.prompt, skill.append) }}
+                className="w-full flex items-center gap-2.5 px-3 py-1.5 hover:bg-violet-500/10 text-[#e5e5e5] text-[13px] rounded-md transition-colors"
+              >
+                <span className="text-[12px]">{skill.icon}</span>
+                <span>{skill.label}</span>
+              </button>
+            ))}
+
+            <div className="h-px bg-[#2a2a2a] my-1" />
+
+            {/* Edit with AI */}
+            <div className="px-2 pb-1.5">
+              {!editOpen ? (
+                <button
+                  onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setEditOpen(true) }}
+                  className="w-full flex items-center gap-2.5 px-2 py-1.5 hover:bg-violet-500/10 text-violet-400 rounded-md text-[13px] transition-colors"
+                >
+                  <span className="text-[12px]">✎</span>
+                  <span>Edit with AI</span>
+                  <span className="ml-auto text-[10px] text-[#555] font-mono">Alt+⇧+E</span>
+                </button>
+              ) : (
+                <div onMouseDown={(e) => e.stopPropagation()}>
+                  <input
+                    autoFocus
+                    value={editPrompt}
+                    onChange={(e) => setEditPrompt(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') runEditWithAI(); if (e.key === 'Escape') setEditOpen(false) }}
+                    placeholder="Tell AI what to do…"
+                    className="w-full bg-[#111] border border-[#333] rounded-lg px-2.5 py-1.5 text-[12px] text-[#ccc] placeholder-[#444] outline-none focus:border-violet-500/50"
+                  />
+                  <div className="flex gap-1 mt-1">
+                    <button
+                      onMouseDown={(e) => { e.preventDefault(); runEditWithAI() }}
+                      className="flex-1 text-[11px] py-1 rounded-md bg-violet-600 hover:bg-violet-500 text-white transition-colors"
+                    >Apply</button>
+                    <button
+                      onMouseDown={(e) => { e.preventDefault(); setEditOpen(false) }}
+                      className="px-2 text-[11px] py-1 rounded-md bg-[#2a2a2a] hover:bg-[#333] text-[#aaa] transition-colors"
+                    >✕</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─── Custom Formatting Toolbar ─────────────────────────────────────────────────
+
+function CustomFormattingToolbar() {
+  return (
+    <FormattingToolbar>
+      {/* Default formatting buttons */}
+      <div className="bn-toolbar-group">
+        {/* BlockNote renders its default buttons here automatically */}
+      </div>
+      {/* AI Skills appended at the end */}
+      <AIFormattingToolbar />
+    </FormattingToolbar>
+  )
+}
+
+// ─── Editor Props ─────────────────────────────────────────────────────────────
+
 interface EditorProps {
   initialContent?: Block[] | null
   onChange?: (content: Block[]) => void
 }
+
+// ─── Main Editor ──────────────────────────────────────────────────────────────
 
 export default function Editor({ initialContent, onChange }: EditorProps) {
   const editor = useCreateBlockNote({
@@ -187,19 +627,25 @@ export default function Editor({ initialContent, onChange }: EditorProps) {
   const changeRef = useRef(onChange)
   changeRef.current = onChange
 
+  const [contextMenu, setContextMenu] = useState<{
+    blockId: string
+    position: { x: number; y: number }
+  } | null>(null)
+
+  // YouTube paste
   useEffect(() => {
     if (!editor) return
     const handlePaste = (e: ClipboardEvent) => {
       const text = e.clipboardData?.getData('text/plain')?.trim()
       if (!text || !isYouTubeUrl(text)) return
       e.preventDefault()
-      const block = { type: 'youtube', props: { url: text } } as any
-      insertOrUpdateBlock(editor as any, block)
+      insertOrUpdateBlock(editor as any, { type: 'youtube', props: { url: text } } as any)
     }
     window.addEventListener('paste', handlePaste)
     return () => window.removeEventListener('paste', handlePaste)
   }, [editor])
 
+  // Video uploaded event
   useEffect(() => {
     if (!editor) return
     const handleVideoUploaded = (e: Event) => {
@@ -210,13 +656,59 @@ export default function Editor({ initialContent, onChange }: EditorProps) {
     return () => window.removeEventListener('video-uploaded', handleVideoUploaded)
   }, [editor])
 
+  // Content change
   useEffect(() => {
     if (!editor) return
     const unsubscribe = editor.onChange(() => { changeRef.current?.(editor.document as Block[]) })
     return () => unsubscribe?.()
   }, [editor])
 
-  // Make floating panels draggable — override transform with fixed position
+  // Context menu via right-click on block handles
+  useEffect(() => {
+    const handleContextMenu = (e: MouseEvent) => {
+      const blockEl = (e.target as HTMLElement).closest('[data-id]') as HTMLElement | null
+      if (!blockEl) return
+      const blockId = blockEl.dataset.id
+      if (!blockId) return
+      e.preventDefault()
+      setContextMenu({ blockId, position: { x: e.clientX, y: e.clientY } })
+    }
+
+    // Also intercept the block options button (•••)
+    const handleClick = (e: MouseEvent) => {
+      const optBtn = (e.target as HTMLElement).closest('[data-block-id]') as HTMLElement | null
+      if (!optBtn) return
+      const blockId = optBtn.dataset.blockId
+      if (!blockId) return
+      const rect = optBtn.getBoundingClientRect()
+      setContextMenu({ blockId, position: { x: rect.right, y: rect.bottom } })
+    }
+
+    document.addEventListener('contextmenu', handleContextMenu)
+    document.addEventListener('click', handleClick)
+    return () => {
+      document.removeEventListener('contextmenu', handleContextMenu)
+      document.removeEventListener('click', handleClick)
+    }
+  }, [])
+
+  // Ctrl+J → Ask AI on focused block
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'j') {
+        e.preventDefault()
+        const block = editor?.getTextCursorPosition()?.block
+        if (!block) return
+        const el = document.querySelector(`[data-id="${block.id}"]`) as HTMLElement | null
+        const rect = el?.getBoundingClientRect()
+        setContextMenu({ blockId: block.id, position: { x: rect?.left || 200, y: rect?.bottom || 200 } })
+      }
+    }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [editor])
+
+  // Draggable floating panels
   useEffect(() => {
     const makeDraggable = (el: HTMLElement) => {
       if (el.dataset.draggable) return
@@ -226,7 +718,6 @@ export default function Editor({ initialContent, onChange }: EditorProps) {
         const t = e.target as HTMLElement
         if (t.closest('button') || t.closest('input') || t.closest('a')) return
 
-        // Snapshot current visual position, kill transform
         const rect = el.getBoundingClientRect()
         el.style.position = 'fixed'
         el.style.left = rect.left + 'px'
@@ -271,18 +762,45 @@ export default function Editor({ initialContent, onChange }: EditorProps) {
   }, [])
 
   return (
-    <div id="bn-editor-focus" tabIndex={-1}>
-      <BlockNoteView editor={editor} theme="dark" slashMenu={false}>
-        <SuggestionMenuController
-          triggerCharacter="/"
-          getItems={async (query) =>
-            filterSuggestionItems(
-              [...getDefaultReactSlashMenuItems(editor), insertVideoItem(editor), insertYouTubeItem(editor)],
-              query
-            )
-          }
+    <>
+      <div id="bn-editor-focus" tabIndex={-1}>
+        <BlockNoteView
+          editor={editor}
+          theme="dark"
+          slashMenu={false}
+          formattingToolbar={false}
+        >
+          {/* Custom formatting toolbar with AI skills */}
+          <FormattingToolbarController
+            formattingToolbar={() => (
+              <FormattingToolbar>
+                <AIFormattingToolbar />
+              </FormattingToolbar>
+            )}
+          />
+
+          {/* Slash menu */}
+          <SuggestionMenuController
+            triggerCharacter="/"
+            getItems={async (query) =>
+              filterSuggestionItems(
+                [...getDefaultReactSlashMenuItems(editor), insertVideoItem(editor), insertYouTubeItem(editor)],
+                query
+              )
+            }
+          />
+        </BlockNoteView>
+      </div>
+
+      {/* Custom Context Menu */}
+      {contextMenu && (
+        <BlockContextMenu
+          blockId={contextMenu.blockId}
+          editor={editor as any}
+          position={contextMenu.position}
+          onClose={() => setContextMenu(null)}
         />
-      </BlockNoteView>
-    </div>
+      )}
+    </>
   )
 }
