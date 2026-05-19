@@ -446,7 +446,7 @@ const AI_SKILLS = [
 ]
 
 function AIFormattingToolbar() {
-  const editor = useBlockNoteEditor()
+  const editor = useBlockNoteEditor<typeof schema.blockSpecs, any, any>()
   const [aiOpen, setAiOpen] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
   const [editPrompt, setEditPrompt] = useState('')
@@ -663,34 +663,36 @@ export default function Editor({ initialContent, onChange }: EditorProps) {
     return () => unsubscribe?.()
   }, [editor])
 
-  // Context menu via right-click on block handles
+  // Context menu via right-click — try multiple BlockNote DOM selectors
   useEffect(() => {
-    const handleContextMenu = (e: MouseEvent) => {
-      const blockEl = (e.target as HTMLElement).closest('[data-id]') as HTMLElement | null
-      if (!blockEl) return
-      const blockId = blockEl.dataset.id
-      if (!blockId) return
-      e.preventDefault()
-      setContextMenu({ blockId, position: { x: e.clientX, y: e.clientY } })
+    const getBlockIdFromTarget = (target: HTMLElement): string | null => {
+      const selectors = ['[data-id]', '[data-node-id]', '[data-block-id]', '.bn-block-outer', '.bn-block']
+      for (const sel of selectors) {
+        const el = target.closest(sel) as HTMLElement | null
+        if (el) {
+          const id = el.dataset.id || el.dataset.nodeId || el.dataset.blockId
+          if (id) return id
+        }
+      }
+      try {
+        const pos = (editor as any)?.getTextCursorPosition?.()
+        return pos?.block?.id || null
+      } catch { return null }
     }
 
-    // Also intercept the block options button (•••)
-    const handleClick = (e: MouseEvent) => {
-      const optBtn = (e.target as HTMLElement).closest('[data-block-id]') as HTMLElement | null
-      if (!optBtn) return
-      const blockId = optBtn.dataset.blockId
-      if (!blockId) return
-      const rect = optBtn.getBoundingClientRect()
-      setContextMenu({ blockId, position: { x: rect.right, y: rect.bottom } })
+    const handleContextMenu = (e: MouseEvent) => {
+      const editorEl = document.getElementById('bn-editor-focus')
+      if (!editorEl?.contains(e.target as Node)) return
+      e.preventDefault()
+      const blockId = getBlockIdFromTarget(e.target as HTMLElement)
+      const finalId = blockId || (editor as any)?.getTextCursorPosition?.()?.block?.id
+      if (!finalId) return
+      setContextMenu({ blockId: finalId, position: { x: e.clientX, y: e.clientY } })
     }
 
     document.addEventListener('contextmenu', handleContextMenu)
-    document.addEventListener('click', handleClick)
-    return () => {
-      document.removeEventListener('contextmenu', handleContextMenu)
-      document.removeEventListener('click', handleClick)
-    }
-  }, [])
+    return () => document.removeEventListener('contextmenu', handleContextMenu)
+  }, [editor])
 
   // Ctrl+J → Ask AI on focused block
   useEffect(() => {
