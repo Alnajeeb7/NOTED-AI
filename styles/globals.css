@@ -362,3 +362,10 @@
   box-shadow: 0 4px 20px rgba(0,0,0,0.7) !important;
   padding: 4px !important;
 }
+
+/* Hide BlockNote's default block context menu (replaced by custom) */
+.bn-drag-handle-menu,
+[data-radix-popper-content-wrapper] .bn-menu,
+.bn-block-context-menu {
+  display: none !important;
+}
