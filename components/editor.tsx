@@ -884,7 +884,6 @@ export default function Editor({ initialContent, onChange }: EditorProps) {
           theme="dark"
           slashMenu={false}
           formattingToolbar={false}
-          blockContextMenu={false}
           sideMenu={false}
         >
           {/* Custom formatting toolbar with AI skills */}
