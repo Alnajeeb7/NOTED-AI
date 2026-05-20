@@ -681,7 +681,6 @@ function NotionSlashMenu(props: any) {
                   textAlign: 'left',
                   borderRadius: 5,
                   margin: '1px 4px',
-                  width: 'calc(100% - 8px)',
                 }}
               >
                 <div style={{
