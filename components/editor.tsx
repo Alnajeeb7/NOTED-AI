@@ -14,6 +14,10 @@ import {
   createReactBlockSpec,
   getDefaultReactSlashMenuItems,
   SuggestionMenuController,
+  SideMenuController,
+  SideMenu,
+  AddBlockButton,
+  DragHandleButton,
   FormattingToolbar,
   FormattingToolbarController,
   useComponentsContext,
@@ -608,6 +612,116 @@ function CustomFormattingToolbar() {
   )
 }
 
+
+// ─── Notion-style Slash Menu Component ───────────────────────────────────────
+
+function NotionSlashMenu(props: any) {
+  const { items, loadingState, selectedIndex, onItemClick } = props
+  if (loadingState === 'loading-initial') return null
+
+  // Group items by their group
+  const grouped: Record<string, typeof items> = {}
+  for (const item of items) {
+    const g = item.group || 'Other'
+    if (!grouped[g]) grouped[g] = []
+    grouped[g].push(item)
+  }
+
+  const groupOrder = ['Headings', 'Basic blocks', 'Advanced', 'Media', 'Other']
+  const sortedGroups = [
+    ...groupOrder.filter((g) => grouped[g]),
+    ...Object.keys(grouped).filter((g) => !groupOrder.includes(g)),
+  ]
+
+  let globalIdx = 0
+
+  return (
+    <div
+      className="notion-slash-menu"
+      style={{
+        background: '#191919',
+        border: '1px solid rgba(255,255,255,0.08)',
+        borderRadius: 8,
+        boxShadow: '0 4px 24px rgba(0,0,0,0.8)',
+        width: 300,
+        maxHeight: 400,
+        overflowY: 'auto',
+        padding: '6px 0',
+        zIndex: 9999,
+      }}
+    >
+      {sortedGroups.map((group) => (
+        <div key={group}>
+          <div style={{
+            fontSize: 10,
+            fontWeight: 600,
+            textTransform: 'uppercase',
+            letterSpacing: '0.07em',
+            color: 'rgba(255,255,255,0.3)',
+            padding: '8px 12px 4px',
+          }}>
+            {group}
+          </div>
+          {grouped[group].map((item: any) => {
+            const idx = globalIdx++
+            const isSelected = idx === selectedIndex
+            return (
+              <button
+                key={item.title}
+                onMouseDown={(e) => { e.preventDefault(); onItemClick?.(item) }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  width: '100%',
+                  padding: '5px 10px',
+                  background: isSelected ? 'rgba(255,255,255,0.08)' : 'transparent',
+                  border: 'none',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  borderRadius: 5,
+                  margin: '1px 4px',
+                  width: 'calc(100% - 8px)',
+                }}
+              >
+                <div style={{
+                  width: 32,
+                  height: 32,
+                  minWidth: 32,
+                  borderRadius: 5,
+                  background: 'rgba(255,255,255,0.07)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: 15,
+                  color: 'rgba(255,255,255,0.8)',
+                }}>
+                  {item.icon}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 500, color: 'rgba(255,255,255,0.9)', lineHeight: 1.3 }}>
+                    {item.title}
+                  </div>
+                  {item.subtext && (
+                    <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginTop: 1 }}>
+                      {item.subtext}
+                    </div>
+                  )}
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      ))}
+      {items.length === 0 && (
+        <div style={{ padding: '12px 16px', fontSize: 13, color: 'rgba(255,255,255,0.3)', textAlign: 'center' }}>
+          No results
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Editor Props ─────────────────────────────────────────────────────────────
 
 interface EditorProps {
@@ -771,6 +885,8 @@ export default function Editor({ initialContent, onChange }: EditorProps) {
           theme="dark"
           slashMenu={false}
           formattingToolbar={false}
+          blockContextMenu={false}
+          sideMenu={false}
         >
           {/* Custom formatting toolbar with AI skills */}
           <FormattingToolbarController
@@ -781,7 +897,22 @@ export default function Editor({ initialContent, onChange }: EditorProps) {
             )}
           />
 
-          {/* Slash menu */}
+          {/* Custom Side Menu with context menu trigger */}
+          <SideMenuController
+            sideMenu={(props) => (
+              <SideMenu {...props}>
+                <AddBlockButton {...props} />
+                <DragHandleButton
+                  {...props}
+                  dragHandleMenu={(dhProps) => (
+                    <div style={{ display: 'none' }} />
+                  )}
+                />
+              </SideMenu>
+            )}
+          />
+
+          {/* Notion-style Slash menu */}
           <SuggestionMenuController
             triggerCharacter="/"
             getItems={async (query) =>
@@ -790,6 +921,7 @@ export default function Editor({ initialContent, onChange }: EditorProps) {
                 query
               )
             }
+            suggestionMenuComponent={NotionSlashMenu}
           />
         </BlockNoteView>
       </div>
