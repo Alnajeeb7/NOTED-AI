@@ -18,7 +18,7 @@ export async function POST(req: NextRequest) {
       messages: [
         {
           role: 'system',
-          content: 'You are an inline writing assistant. Return only the transformed text with no commentary, preamble, or explanation. Output just the result.',
+          content: 'You are an inline writing assistant for a Notion-like editor. Return only the transformed text with no commentary, preamble, or explanation. Output just the result. When producing lists or structured content, use proper markdown: # for headings, - [ ] for checklist items, - for bullets, 1. for numbered lists.',
         },
         {
           role: 'user',
