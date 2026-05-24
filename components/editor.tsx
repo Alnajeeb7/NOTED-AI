@@ -220,16 +220,17 @@ const TURN_INTO_TYPES = [
   { label: 'Quote',           icon: '"',  type: 'quote'            },
 ]
 
+// BlockNote color names must match its internal palette exactly
 const COLORS = [
-  { label: 'Default', color: undefined, bg: undefined },
-  { label: 'Gray',    color: 'gray',    bg: '#374151' },
-  { label: 'Red',     color: 'red',     bg: '#dc2626' },
-  { label: 'Orange',  color: 'orange',  bg: '#ea580c' },
-  { label: 'Yellow',  color: 'yellow',  bg: '#ca8a04' },
-  { label: 'Green',   color: 'green',   bg: '#16a34a' },
-  { label: 'Blue',    color: 'blue',    bg: '#2563eb' },
-  { label: 'Purple',  color: 'purple',  bg: '#9333ea' },
-  { label: 'Pink',    color: 'pink',    bg: '#db2777' },
+  { label: 'Default', color: 'default', bg: undefined       },
+  { label: 'Gray',    color: 'gray',    bg: '#9ca3af'       },
+  { label: 'Red',     color: 'red',     bg: '#f87171'       },
+  { label: 'Orange',  color: 'orange',  bg: '#fb923c'       },
+  { label: 'Yellow',  color: 'yellow',  bg: '#fbbf24'       },
+  { label: 'Green',   color: 'green',   bg: '#4ade80'       },
+  { label: 'Blue',    color: 'blue',    bg: '#60a5fa'       },
+  { label: 'Purple',  color: 'purple',  bg: '#c084fc'       },
+  { label: 'Pink',    color: 'pink',    bg: '#f472b6'       },
 ]
 
 function BlockContextMenu({ blockId, editor, position, onClose }: ContextMenuProps) {
@@ -386,10 +387,13 @@ function BlockContextMenu({ blockId, editor, position, onClose }: ContextMenuPro
                     title={c.label}
                     onMouseDown={(e) => {
                       e.preventDefault(); e.stopPropagation()
-                      try { editor.updateBlock(blockId as any, { props: { textColor: c.color || 'default' } } as any) } catch { }
+                      try {
+                        editor.updateBlock(blockId as any, { props: { textColor: c.color } } as any)
+                        toast.success(`Text: ${c.label}`, { duration: 1000 })
+                      } catch { toast.error('Color not supported for this block type') }
                       onClose()
                     }}
-                    style={{ width: 20, height: 20, borderRadius: 4, background: c.bg || '#e5e5e5', border: '1.5px solid #333' }}
+                    style={{ width: 22, height: 22, borderRadius: 4, background: c.bg || '#e5e5e5', border: '2px solid #444', cursor: 'pointer' }}
                   />
                 ))}
               </div>
@@ -401,10 +405,13 @@ function BlockContextMenu({ blockId, editor, position, onClose }: ContextMenuPro
                     title={`${c.label} background`}
                     onMouseDown={(e) => {
                       e.preventDefault(); e.stopPropagation()
-                      try { editor.updateBlock(blockId as any, { props: { backgroundColor: c.color || 'default' } } as any) } catch { }
+                      try {
+                        editor.updateBlock(blockId as any, { props: { backgroundColor: c.color } } as any)
+                        toast.success(`Background: ${c.label}`, { duration: 1000 })
+                      } catch { toast.error('Color not supported for this block type') }
                       onClose()
                     }}
-                    style={{ width: 20, height: 20, borderRadius: 4, background: c.bg ? `${c.bg}40` : '#e5e5e5', border: `1.5px solid ${c.bg || '#333'}` }}
+                    style={{ width: 22, height: 22, borderRadius: 4, background: c.bg ? c.bg + '55' : '#2a2a2a', border: `2px solid ${c.bg || '#444'}`, cursor: 'pointer' }}
                   />
                 ))}
               </div>
@@ -619,21 +626,18 @@ function NotionSlashMenu(props: any) {
   const { items, loadingState, selectedIndex, onItemClick } = props
   if (loadingState === 'loading-initial') return null
 
-  // Group items by their group
-  const grouped: Record<string, typeof items> = {}
-  for (const item of items) {
+  // Build ordered flat list for correct index tracking, then group for display
+  const groupOrder = ['Headings', 'Basic blocks', 'Advanced', 'Media', 'Other']
+  const grouped: Record<string, Array<{ item: any; flatIdx: number }>> = {}
+  items.forEach((item: any, flatIdx: number) => {
     const g = item.group || 'Other'
     if (!grouped[g]) grouped[g] = []
-    grouped[g].push(item)
-  }
-
-  const groupOrder = ['Headings', 'Basic blocks', 'Advanced', 'Media', 'Other']
+    grouped[g].push({ item, flatIdx })
+  })
   const sortedGroups = [
     ...groupOrder.filter((g) => grouped[g]),
     ...Object.keys(grouped).filter((g) => !groupOrder.includes(g)),
   ]
-
-  let globalIdx = 0
 
   return (
     <div
@@ -662,9 +666,8 @@ function NotionSlashMenu(props: any) {
           }}>
             {group}
           </div>
-          {grouped[group].map((item: any) => {
-            const idx = globalIdx++
-            const isSelected = idx === selectedIndex
+          {grouped[group].map(({ item, flatIdx }) => {
+            const isSelected = flatIdx === selectedIndex
             return (
               <button
                 key={item.title}
@@ -688,7 +691,7 @@ function NotionSlashMenu(props: any) {
                   height: 32,
                   minWidth: 32,
                   borderRadius: 5,
-                  background: 'rgba(255,255,255,0.07)',
+                  background: isSelected ? 'rgba(139,92,246,0.2)' : 'rgba(255,255,255,0.07)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -698,7 +701,7 @@ function NotionSlashMenu(props: any) {
                   {item.icon}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 500, color: 'rgba(255,255,255,0.9)', lineHeight: 1.3 }}>
+                  <div style={{ fontSize: 13, fontWeight: 500, color: isSelected ? '#fff' : 'rgba(255,255,255,0.9)', lineHeight: 1.3 }}>
                     {item.title}
                   </div>
                   {item.subtext && (
@@ -823,15 +826,21 @@ export default function Editor({ initialContent, onChange }: EditorProps) {
     return () => document.removeEventListener('keydown', handler)
   }, [editor])
 
-  // Draggable floating panels
+  // Draggable floating panels — only slash/suggestion menus, not the formatting toolbar
   useEffect(() => {
     const makeDraggable = (el: HTMLElement) => {
       if (el.dataset.draggable) return
+      // Skip the formatting toolbar (it's inline, not a floating panel)
+      if (el.closest('[data-bn-formatting-toolbar]') || el.classList.contains('bn-formatting-toolbar')) return
       el.dataset.draggable = '1'
 
+      // Add a subtle drag handle feel only on the panel header area, not the whole element
+      // so it doesn't conflict with editor text cursor
       const onDown = (e: MouseEvent) => {
         const t = e.target as HTMLElement
-        if (t.closest('button') || t.closest('input') || t.closest('a')) return
+        if (t.closest('button') || t.closest('input') || t.closest('a') || t.closest('[role="option"]')) return
+        // Only drag if clicking on non-interactive area
+        if (t.closest('[contenteditable]')) return
 
         const rect = el.getBoundingClientRect()
         el.style.position = 'fixed'
@@ -840,7 +849,6 @@ export default function Editor({ initialContent, onChange }: EditorProps) {
         el.style.transform = 'none'
         el.style.transition = 'none'
         el.style.willChange = 'auto'
-        el.style.cursor = 'grabbing'
 
         let lastX = e.clientX
         let lastY = e.clientY
@@ -855,7 +863,6 @@ export default function Editor({ initialContent, onChange }: EditorProps) {
         }
 
         const onUp = () => {
-          el.style.cursor = 'grab'
           window.removeEventListener('mousemove', onMove)
           window.removeEventListener('mouseup', onUp)
         }
@@ -865,7 +872,6 @@ export default function Editor({ initialContent, onChange }: EditorProps) {
         window.addEventListener('mouseup', onUp)
       }
 
-      el.style.cursor = 'grab'
       el.addEventListener('mousedown', onDown)
     }
 
