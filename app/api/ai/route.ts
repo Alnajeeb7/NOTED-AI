@@ -102,14 +102,22 @@ export async function POST(req: NextRequest) {
       ? pages.map((p) => `- ${p.icon || '📄'} "${p.title}" (id: ${p.id})`).join('\n')
       : 'No pages yet'
 
+    const currentPageInfo = currentPageId && currentPageTitle
+      ? `ACTIVE PAGE (user is currently on this page — insert content HERE by default):
+- Page ID: ${currentPageId}
+- Page Title: "${currentPageTitle}"
+→ RULE: If user asks to add/insert/create todo/checklist/content — call update_page_content with page_id="${currentPageId}". Do NOT create_page.`
+      : 'No page currently open. If user wants to save content, create a new page.'
+
     const systemContent = `${SYSTEM_PROMPT}
 
 WORKSPACE CONTEXT:
 - Workspace ID: ${workspaceId}
 - User ID: ${session.user.id}
 - Total pages: ${pages?.length || 0}
-- Currently viewing: ${currentPageId || 'none'}
 - KB files loaded: ${allKBItems.length + (attachedFiles?.length ?? 0)}
+
+${currentPageInfo}
 
 PAGES IN WORKSPACE:
 ${pageListContext}
@@ -120,14 +128,11 @@ ${getAntiHallucinationRules(relevantChunks.length > 0)}
 
 ${STRUCTURED_RESPONSE_FORMAT}
 
-IMPORTANT: When the user explicitly asks to CREATE, SAVE, INSERT, or UPDATE a page — use the available tools. Do NOT call any tool just to answer a question, show code, or describe an image. If the user asks "give me the code" or "describe this image", reply in chat directly — do NOT call update_page_content or create_page unless the user says to save/insert it somewhere.
-
-CRITICAL TOOL USAGE RULES:
-- When calling update_page_content or create_page, the "content" argument must be SHORT markdown ONLY (max 800 chars).
-- NEVER put explanations, analysis, or commentary inside the "content" argument — that goes in your chat reply AFTER the tool call.
-- NEVER wrap content in triple backticks inside the content argument.
-- If the content would be long, summarize it or split into key bullet points instead.
-- Write the page content first, then explain what you did in your text response.`
+CRITICAL RULES:
+1. When a page is active, ALWAYS use update_page_content for insertions — NEVER create_page.
+2. For todo/task/checklist requests: use "- [ ] item" markdown. For headings: # ## ###.
+3. The "content" arg must be clean markdown ONLY (max 2000 chars). No explanations inside it.
+4. NEVER wrap content in triple backticks inside tool arguments.`
 
     // ── 7. Agentic loop ──────────────────────────────────────────────────────
     const imageFiles = (attachedFiles || []).filter((f) => f.type.startsWith('image/'))
@@ -327,17 +332,65 @@ CRITICAL TOOL USAGE RULES:
 }
 
 function parseMarkdownToBlocks(markdown: string) {
-  return markdown.split('\n').filter((l) => l.trim()).map((line, i) => {
-    let type = 'paragraph', text = line, level = 1
+  // Strip wrapping code fences if the whole thing is wrapped
+  const stripped = markdown.replace(/^```[\w]*\n?/, '').replace(/\n?```$/, '').trim()
+  const lines = stripped.split('\n')
+  const blocks: unknown[] = []
+  let i = 0
+
+  while (i < lines.length) {
+    const line = lines[i]
+    const trimmed = line.trim()
+    if (!trimmed) { i++; continue }
+
+    let type = 'paragraph'
+    let text = line
+    let level = 1
+    let checked = false
+    const extraProps: Record<string, unknown> = {}
+
     if (line.startsWith('### ')) { type = 'heading'; level = 3; text = line.slice(4) }
     else if (line.startsWith('## ')) { type = 'heading'; level = 2; text = line.slice(3) }
     else if (line.startsWith('# ')) { type = 'heading'; level = 1; text = line.slice(2) }
-    else if (line.startsWith('- [ ] ')) { type = 'checkListItem'; text = line.slice(6) }
+    else if (/^- \[x\] /i.test(line)) { type = 'checkListItem'; checked = true; text = line.slice(6) }
+    else if (line.startsWith('- [ ] ')) { type = 'checkListItem'; checked = false; text = line.slice(6) }
     else if (line.startsWith('- ') || line.startsWith('* ')) { type = 'bulletListItem'; text = line.slice(2) }
-    else if (line.match(/^\d+\. /)) { type = 'numberedListItem'; text = line.replace(/^\d+\. /, '') }
+    else if (/^\d+\. /.test(line)) { type = 'numberedListItem'; text = line.replace(/^\d+\. /, '') }
     else if (line.startsWith('> ')) { type = 'quote'; text = line.slice(2) }
-    return { id: `ai-block-${i}`, type, props: { textColor: 'default', backgroundColor: 'default', textAlignment: 'left', ...(type === 'heading' ? { level } : {}) }, content: [{ type: 'text', text: text.trim(), styles: {} }], children: [] }
-  })
+    else if (line.startsWith('```')) {
+      // Collect code block lines
+      const lang = line.slice(3).trim()
+      const codeLines: string[] = []
+      i++
+      while (i < lines.length && !lines[i].startsWith('```')) {
+        codeLines.push(lines[i])
+        i++
+      }
+      blocks.push({
+        id: `ai-block-${blocks.length}`,
+        type: 'codeBlock',
+        props: { language: lang || 'text', textColor: 'default', backgroundColor: 'default', textAlignment: 'left' },
+        content: [{ type: 'text', text: codeLines.join('\n'), styles: {} }],
+        children: [],
+      })
+      i++
+      continue
+    }
+
+    if (type === 'heading') extraProps.level = level
+    if (type === 'checkListItem') extraProps.checked = checked
+
+    blocks.push({
+      id: `ai-block-${blocks.length}`,
+      type,
+      props: { textColor: 'default', backgroundColor: 'default', textAlignment: 'left', ...extraProps },
+      content: [{ type: 'text', text: text.trim(), styles: {} }],
+      children: [],
+    })
+    i++
+  }
+
+  return blocks.length > 0 ? blocks : [{ id: 'ai-block-0', type: 'paragraph', props: { textColor: 'default', backgroundColor: 'default', textAlignment: 'left' }, content: [{ type: 'text', text: stripped, styles: {} }], children: [] }]
 }
 
 function getDefaultIcon(title: string): string {
