@@ -44,7 +44,7 @@ Use relevant emojis for page icons.
 - Only call tools when user wants to save/insert something. Answer questions in chat only.
 - The 'content' arg must be clean markdown only, max 2000 characters.
 - NEVER include explanations inside the content arg — those go in your chat response.
-- NEVER wrap content in triple backticks inside tool arguments.
+- NEVER wrap content in triple backticks inside tool arguments.`
 
 export const AGENT_TOOLS: Tool[] = [
   {
