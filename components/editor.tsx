@@ -20,10 +20,7 @@ import {
   DragHandleButton,
   FormattingToolbar,
   FormattingToolbarController,
-  useComponentsContext,
   useBlockNoteEditor,
-  useEditorContentOrSelectionChange,
-  useEditorSelectionChange,
 } from '@blocknote/react'
 import type { Block } from '@blocknote/core'
 import toast from 'react-hot-toast'
@@ -42,6 +39,10 @@ function extractYouTubeId(url: string): string | null {
     if (m) return m[1]
   }
   return null
+}
+
+function isYouTubeUrl(text: string): boolean {
+  return /(?:youtube\.com\/watch|youtu\.be\/|youtube\.com\/shorts\/)/.test(text)
 }
 
 // ─── YouTube Block ────────────────────────────────────────────────────────────
@@ -148,10 +149,102 @@ const VideoBlock = createReactBlockSpec(
   }
 )
 
+// ─── Divider Block ────────────────────────────────────────────────────────────
+
+const DividerBlock = createReactBlockSpec(
+  { type: 'divider' as const, propSchema: { style: { default: 'solid' } }, content: 'none' },
+  {
+    render: ({ block }) => (
+      <div contentEditable={false} style={{ padding: '8px 0', userSelect: 'none' }}>
+        <hr style={{
+          border: 'none',
+          borderTop: block.props.style === 'dashed' ? '1.5px dashed rgba(255,255,255,0.15)' : block.props.style === 'dotted' ? '2px dotted rgba(255,255,255,0.15)' : '1px solid rgba(255,255,255,0.12)',
+          margin: 0,
+        }} />
+      </div>
+    ),
+    toExternalHTML: () => <hr />,
+  }
+)
+
+// ─── Callout Block ────────────────────────────────────────────────────────────
+
+const CALLOUT_TYPES = {
+  info:    { emoji: 'ℹ️', bg: 'rgba(59,130,246,0.10)', border: 'rgba(59,130,246,0.25)' },
+  warning: { emoji: '⚠️', bg: 'rgba(251,191,36,0.10)', border: 'rgba(251,191,36,0.30)' },
+  success: { emoji: '✅', bg: 'rgba(34,197,94,0.10)',  border: 'rgba(34,197,94,0.25)'  },
+  error:   { emoji: '❌', bg: 'rgba(239,68,68,0.10)',  border: 'rgba(239,68,68,0.25)'  },
+  tip:     { emoji: '💡', bg: 'rgba(168,85,247,0.10)', border: 'rgba(168,85,247,0.25)' },
+}
+
+const CalloutBlock = createReactBlockSpec(
+  {
+    type: 'callout' as const,
+    propSchema: {
+      emoji: { default: 'ℹ️' },
+      kind: { default: 'info' },
+      text: { default: '' },
+    },
+    content: 'none',
+  },
+  {
+    render: ({ block, editor }) => {
+      const kind = (block.props.kind as keyof typeof CALLOUT_TYPES) || 'info'
+      const cfg = CALLOUT_TYPES[kind] || CALLOUT_TYPES.info
+      const [editing, setEditing] = useState(false)
+      const [text, setText] = useState(block.props.text || '')
+
+      const save = () => {
+        editor.updateBlock(block.id, { props: { ...block.props, text } } as any)
+        setEditing(false)
+      }
+
+      return (
+        <div
+          contentEditable={false}
+          style={{
+            display: 'flex', gap: 10, padding: '10px 14px', borderRadius: 8,
+            background: cfg.bg, border: `1px solid ${cfg.border}`, margin: '2px 0',
+          }}
+        >
+          <span style={{ fontSize: 16, lineHeight: '24px', flexShrink: 0 }}>{cfg.emoji}</span>
+          <div style={{ flex: 1 }}>
+            {editing ? (
+              <textarea
+                autoFocus
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                onBlur={save}
+                onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); save() } if (e.key === 'Escape') setEditing(false) }}
+                style={{ width: '100%', background: 'transparent', border: 'none', outline: 'none', color: 'rgba(255,255,255,0.9)', fontSize: 14, lineHeight: 1.6, resize: 'none', fontFamily: 'inherit' }}
+                rows={2}
+              />
+            ) : (
+              <p
+                onClick={() => setEditing(true)}
+                style={{ margin: 0, fontSize: 14, lineHeight: 1.6, color: text ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.3)', cursor: 'text', minHeight: 24 }}
+              >
+                {text || 'Click to add callout text…'}
+              </p>
+            )}
+          </div>
+        </div>
+      )
+    },
+    toExternalHTML: ({ block }) => <blockquote>{block.props.text}</blockquote>,
+  }
+)
+
 // ─── Schema ───────────────────────────────────────────────────────────────────
 
 const schema = BlockNoteSchema.create({
-  blockSpecs: { ...defaultBlockSpecs, youtube: YouTubeBlock, video: VideoBlock },
+  blockSpecs: {
+    ...defaultBlockSpecs,
+    youtube: YouTubeBlock,
+    video: VideoBlock,
+    divider: DividerBlock,
+    callout: CalloutBlock,
+  },
 })
 
 async function uploadToSupabase(file: File): Promise<string> {
@@ -163,26 +256,80 @@ async function uploadToSupabase(file: File): Promise<string> {
   return url
 }
 
-function isYouTubeUrl(text: string): boolean {
-  return /(?:youtube\.com\/watch|youtu\.be\/|youtube\.com\/shorts\/)/.test(text)
-}
+// ─── Slash Menu Items ─────────────────────────────────────────────────────────
 
 const insertVideoItem = (editor: typeof schema.BlockNoteEditor) => ({
   title: 'Video',
-  subtext: 'Insert a video file',
+  subtext: 'Upload or embed a video file',
   onItemClick: () => { insertOrUpdateBlock(editor as any, { type: 'video', props: { url: '', name: '' } } as any) },
-  aliases: ['video', 'mp4', 'webm', 'film', 'media'],
+  aliases: ['video', 'mp4', 'webm', 'film', 'media', 'upload'],
   group: 'Media',
-  icon: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="7" width="20" height="15" rx="2"/><polyline points="17 2 12 7 7 2"/></svg>,
+  icon: (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
+      <rect x="2" y="7" width="20" height="15" rx="2"/><polyline points="17 2 12 7 7 2"/>
+    </svg>
+  ),
 })
 
 const insertYouTubeItem = (editor: typeof schema.BlockNoteEditor) => ({
   title: 'YouTube',
   subtext: 'Embed a YouTube video',
   onItemClick: () => { insertOrUpdateBlock(editor as any, { type: 'youtube', props: { url: '' } } as any) },
-  aliases: ['youtube', 'yt', 'embed'],
+  aliases: ['youtube', 'yt', 'embed', 'video'],
   group: 'Media',
-  icon: <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>,
+  icon: (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
+      <circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/>
+    </svg>
+  ),
+})
+
+const insertDividerItem = (editor: typeof schema.BlockNoteEditor) => ({
+  title: 'Divider',
+  subtext: 'Visual separator between blocks',
+  onItemClick: () => { insertOrUpdateBlock(editor as any, { type: 'divider', props: { style: 'solid' } } as any) },
+  aliases: ['divider', 'separator', 'hr', 'line', '---'],
+  group: 'Basic blocks',
+  icon: (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
+      <line x1="3" y1="12" x2="21" y2="12"/>
+    </svg>
+  ),
+})
+
+const insertCalloutItem = (editor: typeof schema.BlockNoteEditor, kind: keyof typeof CALLOUT_TYPES) => {
+  const cfg = CALLOUT_TYPES[kind]
+  const labels: Record<string, string> = { info: 'Info callout', warning: 'Warning callout', success: 'Success callout', error: 'Error callout', tip: 'Tip callout' }
+  return {
+    title: labels[kind],
+    subtext: `${cfg.emoji} Highlighted callout block`,
+    onItemClick: () => {
+      insertOrUpdateBlock(editor as any, {
+        type: 'callout',
+        props: { kind, emoji: cfg.emoji, text: '' },
+      } as any)
+    },
+    aliases: ['callout', kind, 'note', 'alert', cfg.emoji],
+    group: 'Advanced',
+    icon: <span style={{ fontSize: 16 }}>{cfg.emoji}</span>,
+  }
+}
+
+const insertTableItem = (editor: typeof schema.BlockNoteEditor) => ({
+  title: 'Table',
+  subtext: 'Insert a structured table',
+  onItemClick: () => { insertOrUpdateBlock(editor as any, { type: 'table' } as any) },
+  aliases: ['table', 'grid', 'spreadsheet', 'rows', 'columns'],
+  group: 'Advanced',
+  icon: (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
+      <rect x="3" y="3" width="18" height="18" rx="2"/>
+      <line x1="3" y1="9" x2="21" y2="9"/>
+      <line x1="3" y1="15" x2="21" y2="15"/>
+      <line x1="9" y1="3" x2="9" y2="21"/>
+      <line x1="15" y1="3" x2="15" y2="21"/>
+    </svg>
+  ),
 })
 
 // ─── AI helper ────────────────────────────────────────────────────────────────
@@ -208,37 +355,50 @@ interface ContextMenuProps {
 }
 
 const TURN_INTO_TYPES = [
-  { label: 'Text',            icon: 'T',  type: 'paragraph'        },
-  { label: 'Heading 1',       icon: 'H₁', type: 'heading', level: 1 },
-  { label: 'Heading 2',       icon: 'H₂', type: 'heading', level: 2 },
-  { label: 'Heading 3',       icon: 'H₃', type: 'heading', level: 3 },
-  { label: 'Bulleted list',   icon: '•',  type: 'bulletListItem'   },
-  { label: 'Numbered list',   icon: '1.', type: 'numberedListItem' },
-  { label: 'To-do list',      icon: '☐',  type: 'checkListItem'    },
-  { label: 'Toggle list',     icon: '▶',  type: 'toggleListItem'   },
-  { label: 'Code',            icon: '</>', type: 'codeBlock'        },
-  { label: 'Quote',           icon: '"',  type: 'quote'            },
+  { label: 'Text',           icon: 'T',   type: 'paragraph'        },
+  { label: 'Heading 1',      icon: 'H₁',  type: 'heading', level: 1 },
+  { label: 'Heading 2',      icon: 'H₂',  type: 'heading', level: 2 },
+  { label: 'Heading 3',      icon: 'H₃',  type: 'heading', level: 3 },
+  { label: 'Bullet list',    icon: '•',   type: 'bulletListItem'   },
+  { label: 'Numbered list',  icon: '1.',  type: 'numberedListItem' },
+  { label: 'To-do list',     icon: '☐',   type: 'checkListItem'    },
+  { label: 'Toggle list',    icon: '▶',   type: 'toggleListItem'   },
+  { label: 'Code',           icon: '</>',  type: 'codeBlock'        },
+  { label: 'Quote',          icon: '"',   type: 'quote'            },
 ]
 
-// BlockNote color names must match its internal palette exactly
 const COLORS = [
-  { label: 'Default', color: 'default', bg: undefined       },
-  { label: 'Gray',    color: 'gray',    bg: '#9ca3af'       },
-  { label: 'Red',     color: 'red',     bg: '#f87171'       },
-  { label: 'Orange',  color: 'orange',  bg: '#fb923c'       },
-  { label: 'Yellow',  color: 'yellow',  bg: '#fbbf24'       },
-  { label: 'Green',   color: 'green',   bg: '#4ade80'       },
-  { label: 'Blue',    color: 'blue',    bg: '#60a5fa'       },
-  { label: 'Purple',  color: 'purple',  bg: '#c084fc'       },
-  { label: 'Pink',    color: 'pink',    bg: '#f472b6'       },
+  { label: 'Default', color: 'default', bg: undefined      },
+  { label: 'Gray',    color: 'gray',    bg: '#9ca3af'      },
+  { label: 'Red',     color: 'red',     bg: '#f87171'      },
+  { label: 'Orange',  color: 'orange',  bg: '#fb923c'      },
+  { label: 'Yellow',  color: 'yellow',  bg: '#fbbf24'      },
+  { label: 'Green',   color: 'green',   bg: '#4ade80'      },
+  { label: 'Blue',    color: 'blue',    bg: '#60a5fa'      },
+  { label: 'Purple',  color: 'purple',  bg: '#c084fc'      },
+  { label: 'Pink',    color: 'pink',    bg: '#f472b6'      },
+]
+
+// All context menu AI actions
+const AI_CONTEXT_ACTIONS = [
+  { label: 'Improve writing',  icon: '✨', prompt: 'Improve the writing quality of this text, making it clearer and more polished:' },
+  { label: 'Summarize',        icon: '📝', prompt: 'Summarize this text concisely in 1-2 sentences:' },
+  { label: 'Make it shorter',  icon: '✂️', prompt: 'Make this text more concise without losing meaning:' },
+  { label: 'Make it longer',   icon: '📖', prompt: 'Expand this text with more detail and depth:' },
+  { label: 'Fix grammar',      icon: '🔍', prompt: 'Fix all grammar, spelling, and punctuation errors in this text:' },
+  { label: 'Translate to EN',  icon: '🌐', prompt: 'Translate this text to English:' },
+  { label: 'Add action items', icon: '☑️', prompt: 'Extract and list action items from this text as - [ ] checkboxes:' },
+  { label: 'Explain simply',   icon: '💡', prompt: 'Explain this text in simple, easy-to-understand terms:' },
 ]
 
 function BlockContextMenu({ blockId, editor, position, onClose }: ContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null)
-  const [sub, setSub] = useState<'turnInto' | 'color' | null>(null)
+  const [sub, setSub] = useState<'turnInto' | 'color' | 'ai' | null>(null)
   const [aiLoading, setAiLoading] = useState(false)
+  const [activeAiLabel, setActiveAiLabel] = useState('')
+  const [searchQuery, setSearchQuery] = useState('')
 
-  // Close on outside click
+  // Close on outside click or Escape
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) onClose()
@@ -252,13 +412,12 @@ function BlockContextMenu({ blockId, editor, position, onClose }: ContextMenuPro
     }
   }, [onClose])
 
-  // Clamp position to viewport
-  const style: React.CSSProperties = {
-    position: 'fixed',
-    left: Math.min(position.x, window.innerWidth - 220),
-    top: Math.min(position.y, window.innerHeight - 400),
-    zIndex: 99999,
-  }
+  // Smart position: clamp to viewport
+  const menuW = 224
+  const menuH = 480
+  const x = Math.min(Math.max(position.x, 8), window.innerWidth - menuW - 8)
+  const y = Math.min(Math.max(position.y, 8), window.innerHeight - menuH - 8)
+  const style: React.CSSProperties = { position: 'fixed', left: x, top: y, zIndex: 99999 }
 
   const getBlockText = () => {
     try {
@@ -275,13 +434,20 @@ function BlockContextMenu({ blockId, editor, position, onClose }: ContextMenuPro
       } else {
         editor.updateBlock(blockId as any, { type } as any)
       }
-    } catch { /* ignore unsupported types */ }
+    } catch { /* ignore unsupported block types */ }
     onClose()
   }
 
   const copyLink = () => {
     const url = `${window.location.href.split('#')[0]}#block-${blockId}`
-    navigator.clipboard.writeText(url).then(() => toast.success('Link copied!'))
+    navigator.clipboard.writeText(url).then(() => toast.success('Block link copied!'))
+    onClose()
+  }
+
+  const copyText = () => {
+    const text = getBlockText()
+    if (!text) { toast('Block has no text'); return }
+    navigator.clipboard.writeText(text).then(() => toast.success('Text copied!'))
     onClose()
   }
 
@@ -289,6 +455,7 @@ function BlockContextMenu({ blockId, editor, position, onClose }: ContextMenuPro
     try {
       const block = (editor.document as any[]).find((b: any) => b.id === blockId)
       if (block) editor.insertBlocks([{ ...block, id: undefined }] as any, blockId as any, 'after')
+      toast.success('Block duplicated')
     } catch { }
     onClose()
   }
@@ -298,22 +465,55 @@ function BlockContextMenu({ blockId, editor, position, onClose }: ContextMenuPro
     onClose()
   }
 
-  const askAI = async () => {
-    const text = getBlockText()
-    if (!text) { toast('No text in this block'); onClose(); return }
-    setAiLoading(true)
+  const insertBelow = () => {
     try {
-      const result = await callAI('Improve and enhance this text, keeping the same meaning:', text)
-      editor.updateBlock(blockId as any, {
-        content: [{ type: 'text', text: result, styles: {} }],
-      } as any)
-      toast.success('AI improved the block!')
-    } catch { toast.error('AI request failed') }
-    setAiLoading(false)
+      editor.insertBlocks([{ type: 'paragraph', content: [] }] as any, blockId as any, 'after')
+    } catch { }
     onClose()
   }
 
-  const menuItem = (icon: React.ReactNode, label: string, shortcut?: string, onClick?: () => void, danger = false) => (
+  const runAI = async (label: string, prompt: string) => {
+    const text = getBlockText()
+    if (!text.trim()) { toast('Block has no text'); onClose(); return }
+    setAiLoading(true)
+    setActiveAiLabel(label)
+    try {
+      const result = await callAI(prompt, text)
+      editor.updateBlock(blockId as any, {
+        content: [{ type: 'text', text: result, styles: {} }],
+      } as any)
+      toast.success(`✦ ${label} done!`)
+    } catch { toast.error('AI request failed') }
+    setAiLoading(false)
+    setActiveAiLabel('')
+    onClose()
+  }
+
+  // Filtered top-level items for search
+  const allTopItems = [
+    { icon: '↺',  label: 'Turn into',     action: () => setSub(sub === 'turnInto' ? null : 'turnInto'), hasSub: true },
+    { icon: 'A',  label: 'Color',          action: () => setSub(sub === 'color' ? null : 'color'),       hasSub: true },
+    { icon: '✦',  label: 'AI actions',     action: () => setSub(sub === 'ai' ? null : 'ai'),             hasSub: true },
+    { icon: '⊕',  label: 'Insert below',   action: insertBelow  },
+    { icon: '🔗',  label: 'Copy link',      action: copyLink     },
+    { icon: '⧉',  label: 'Copy text',      action: copyText     },
+    { icon: '⧉',  label: 'Duplicate',      action: duplicate    },
+    { icon: '💬',  label: 'Comment',        action: () => { toast('Comments coming soon!'); onClose() } },
+    { icon: '🗑',  label: 'Delete',         action: deleteBlock, danger: true },
+  ]
+
+  const filtered = searchQuery
+    ? allTopItems.filter(i => i.label.toLowerCase().includes(searchQuery.toLowerCase()))
+    : allTopItems
+
+  const menuItem = (
+    icon: React.ReactNode,
+    label: string,
+    shortcut?: string,
+    onClick?: () => void,
+    danger = false,
+    hasSub = false
+  ) => (
     <button
       key={label}
       onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); onClick?.() }}
@@ -322,126 +522,163 @@ function BlockContextMenu({ blockId, editor, position, onClose }: ContextMenuPro
       <span className="w-4 text-center text-[11px] text-[#888] shrink-0">{icon}</span>
       <span className="flex-1">{label}</span>
       {shortcut && <span className="text-[10px] text-[#555] font-mono">{shortcut}</span>}
+      {hasSub && <span className="text-[#555] text-xs ml-1">›</span>}
     </button>
   )
 
   return (
     <div ref={menuRef} style={style} onMouseDown={(e) => e.stopPropagation()}>
-      <div className="w-52 rounded-xl border border-[#2a2a2a] bg-[#1c1c1c] shadow-2xl shadow-black/60 overflow-hidden py-1.5 text-[13px]">
+      <div className="w-56 rounded-xl border border-[#2a2a2a] bg-[#1c1c1c] shadow-2xl shadow-black/60 overflow-visible py-1.5 text-[13px]">
 
         {/* Search bar */}
-        <div className="px-3 pb-1.5">
+        <div className="px-2.5 pb-1.5">
           <input
             autoFocus
-            placeholder="Search actions..."
-            className="w-full bg-[#111] border border-[#2a2a2a] rounded-lg px-2.5 py-1.5 text-[12px] text-[#ccc] placeholder-[#444] outline-none"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search actions…"
+            className="w-full bg-[#111] border border-[#2a2a2a] rounded-lg px-2.5 py-1.5 text-[12px] text-[#ccc] placeholder-[#444] outline-none focus:border-[#444]"
             onMouseDown={(e) => e.stopPropagation()}
           />
         </div>
 
         <div className="h-px bg-[#2a2a2a] my-1" />
 
-        {/* Turn into */}
-        <div className="relative">
-          <button
-            onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setSub(sub === 'turnInto' ? null : 'turnInto') }}
-            className="w-full flex items-center gap-2.5 px-3 py-1.5 hover:bg-white/8 text-[#e5e5e5] rounded-md"
-          >
-            <span className="w-4 text-center text-[11px] text-[#888]">↺</span>
-            <span className="flex-1">Turn into</span>
-            <span className="text-[#555] text-xs">›</span>
-          </button>
-          {sub === 'turnInto' && (
-            <div className="absolute left-full top-0 ml-1 w-44 rounded-xl border border-[#2a2a2a] bg-[#1c1c1c] shadow-2xl py-1.5" style={{ zIndex: 100000 }}>
-              {TURN_INTO_TYPES.map((t) => (
-                <button
-                  key={t.label}
-                  onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); turnInto(t.type, (t as any).level) }}
-                  className="w-full flex items-center gap-2.5 px-3 py-1.5 hover:bg-white/8 text-[#e5e5e5] text-[13px] rounded-md"
-                >
-                  <span className="w-5 text-center text-[11px] text-[#888] font-mono">{t.icon}</span>
-                  <span>{t.label}</span>
-                </button>
-              ))}
+        {/* If searching, show flat filtered list */}
+        {searchQuery ? (
+          <div>
+            {filtered.length === 0 && (
+              <p className="px-3 py-2 text-[12px] text-[#555] text-center">No actions found</p>
+            )}
+            {filtered.map((item) => menuItem(item.icon, item.label, undefined, item.action, item.danger, item.hasSub))}
+          </div>
+        ) : (
+          <>
+            {/* Turn into */}
+            <div className="relative">
+              <button
+                onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setSub(sub === 'turnInto' ? null : 'turnInto') }}
+                className="w-full flex items-center gap-2.5 px-3 py-1.5 hover:bg-white/8 text-[#e5e5e5] rounded-md"
+              >
+                <span className="w-4 text-center text-[11px] text-[#888]">↺</span>
+                <span className="flex-1">Turn into</span>
+                <span className="text-[#555] text-xs">›</span>
+              </button>
+              {sub === 'turnInto' && (
+                <div className="absolute left-full top-0 ml-1 w-44 rounded-xl border border-[#2a2a2a] bg-[#1c1c1c] shadow-2xl py-1.5" style={{ zIndex: 100000 }}>
+                  {TURN_INTO_TYPES.map((t) => (
+                    <button
+                      key={t.label}
+                      onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); turnInto(t.type, (t as any).level) }}
+                      className="w-full flex items-center gap-2.5 px-3 py-1.5 hover:bg-white/8 text-[#e5e5e5] text-[13px] rounded-md"
+                    >
+                      <span className="w-5 text-center text-[11px] text-[#888] font-mono">{t.icon}</span>
+                      <span>{t.label}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
-          )}
-        </div>
 
-        {/* Color */}
-        <div className="relative">
-          <button
-            onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setSub(sub === 'color' ? null : 'color') }}
-            className="w-full flex items-center gap-2.5 px-3 py-1.5 hover:bg-white/8 text-[#e5e5e5] rounded-md"
-          >
-            <span className="w-4 text-center text-[11px] text-[#888]">A</span>
-            <span className="flex-1">Color</span>
-            <span className="text-[#555] text-xs">›</span>
-          </button>
-          {sub === 'color' && (
-            <div className="absolute left-full top-0 ml-1 w-44 rounded-xl border border-[#2a2a2a] bg-[#1c1c1c] shadow-2xl py-1.5" style={{ zIndex: 100000 }}>
-              <p className="px-3 py-1 text-[10px] text-[#555] uppercase tracking-wider">Text</p>
-              <div className="flex flex-wrap gap-1.5 px-3 pb-2">
-                {COLORS.map((c) => (
-                  <button
-                    key={c.label}
-                    title={c.label}
-                    onMouseDown={(e) => {
-                      e.preventDefault(); e.stopPropagation()
-                      try {
-                        editor.updateBlock(blockId as any, { props: { textColor: c.color } } as any)
-                        toast.success(`Text: ${c.label}`, { duration: 1000 })
-                      } catch { toast.error('Color not supported for this block type') }
-                      onClose()
-                    }}
-                    style={{ width: 22, height: 22, borderRadius: 4, background: c.bg || '#e5e5e5', border: '2px solid #444', cursor: 'pointer' }}
-                  />
-                ))}
-              </div>
-              <p className="px-3 py-1 text-[10px] text-[#555] uppercase tracking-wider">Background</p>
-              <div className="flex flex-wrap gap-1.5 px-3 pb-2">
-                {COLORS.map((c) => (
-                  <button
-                    key={`bg-${c.label}`}
-                    title={`${c.label} background`}
-                    onMouseDown={(e) => {
-                      e.preventDefault(); e.stopPropagation()
-                      try {
-                        editor.updateBlock(blockId as any, { props: { backgroundColor: c.color } } as any)
-                        toast.success(`Background: ${c.label}`, { duration: 1000 })
-                      } catch { toast.error('Color not supported for this block type') }
-                      onClose()
-                    }}
-                    style={{ width: 22, height: 22, borderRadius: 4, background: c.bg ? c.bg + '55' : '#2a2a2a', border: `2px solid ${c.bg || '#444'}`, cursor: 'pointer' }}
-                  />
-                ))}
-              </div>
+            {/* Color */}
+            <div className="relative">
+              <button
+                onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setSub(sub === 'color' ? null : 'color') }}
+                className="w-full flex items-center gap-2.5 px-3 py-1.5 hover:bg-white/8 text-[#e5e5e5] rounded-md"
+              >
+                <span className="w-4 text-center text-[11px] text-[#888]">A</span>
+                <span className="flex-1">Color</span>
+                <span className="text-[#555] text-xs">›</span>
+              </button>
+              {sub === 'color' && (
+                <div className="absolute left-full top-0 ml-1 w-48 rounded-xl border border-[#2a2a2a] bg-[#1c1c1c] shadow-2xl py-1.5" style={{ zIndex: 100000 }}>
+                  <p className="px-3 py-1 text-[10px] text-[#555] uppercase tracking-wider">Text color</p>
+                  <div className="flex flex-wrap gap-1.5 px-3 pb-2">
+                    {COLORS.map((c) => (
+                      <button
+                        key={c.label}
+                        title={c.label}
+                        onMouseDown={(e) => {
+                          e.preventDefault(); e.stopPropagation()
+                          try {
+                            editor.updateBlock(blockId as any, { props: { textColor: c.color } } as any)
+                            toast.success(`Text: ${c.label}`, { duration: 1000 })
+                          } catch { toast.error('Color not supported here') }
+                          onClose()
+                        }}
+                        style={{ width: 22, height: 22, borderRadius: 4, background: c.bg || '#e5e5e5', border: '2px solid #444', cursor: 'pointer' }}
+                      />
+                    ))}
+                  </div>
+                  <p className="px-3 py-1 text-[10px] text-[#555] uppercase tracking-wider">Background</p>
+                  <div className="flex flex-wrap gap-1.5 px-3 pb-2">
+                    {COLORS.map((c) => (
+                      <button
+                        key={`bg-${c.label}`}
+                        title={`${c.label} background`}
+                        onMouseDown={(e) => {
+                          e.preventDefault(); e.stopPropagation()
+                          try {
+                            editor.updateBlock(blockId as any, { props: { backgroundColor: c.color } } as any)
+                            toast.success(`Background: ${c.label}`, { duration: 1000 })
+                          } catch { toast.error('Color not supported here') }
+                          onClose()
+                        }}
+                        style={{ width: 22, height: 22, borderRadius: 4, background: c.bg ? c.bg + '55' : '#2a2a2a', border: `2px solid ${c.bg || '#444'}`, cursor: 'pointer' }}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
-          )}
-        </div>
 
-        <div className="h-px bg-[#2a2a2a] my-1" />
+            {/* AI Actions submenu */}
+            <div className="relative">
+              <button
+                onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setSub(sub === 'ai' ? null : 'ai') }}
+                disabled={aiLoading}
+                className="w-full flex items-center gap-2.5 px-3 py-1.5 hover:bg-violet-500/10 text-violet-400 rounded-md disabled:opacity-50"
+              >
+                <span className="w-4 text-center text-[11px]">✦</span>
+                <span className="flex-1">{aiLoading ? `${activeAiLabel}…` : 'AI actions'}</span>
+                {aiLoading
+                  ? <svg className="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+                  : <span className="text-[#555] text-xs">›</span>
+                }
+              </button>
+              {sub === 'ai' && !aiLoading && (
+                <div className="absolute left-full top-0 ml-1 w-52 rounded-xl border border-[#2a2a2a] bg-[#1c1c1c] shadow-2xl py-1.5" style={{ zIndex: 100000 }}>
+                  <p className="px-3 py-1 text-[10px] text-[#555] uppercase tracking-wider">AI Actions</p>
+                  {AI_CONTEXT_ACTIONS.map((action) => (
+                    <button
+                      key={action.label}
+                      onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); runAI(action.label, action.prompt) }}
+                      className="w-full flex items-center gap-2.5 px-3 py-1.5 hover:bg-violet-500/10 text-[#e5e5e5] text-[13px] rounded-md transition-colors"
+                    >
+                      <span className="text-[12px] shrink-0">{action.icon}</span>
+                      <span>{action.label}</span>
+                    </button>
+                  ))}
+                  <div className="h-px bg-[#2a2a2a] my-1" />
+                  <p className="px-3 py-1 text-[10px] text-[#444]">Ctrl+J to open here</p>
+                </div>
+              )}
+            </div>
 
-        {menuItem('🔗', 'Copy link to block', 'Alt+⇧+L', copyLink)}
-        {menuItem('⧉', 'Duplicate', 'Ctrl+D', duplicate)}
-        {menuItem('→', 'Move to', 'Ctrl+⇧+P', () => { toast('Move to: use drag & drop'); onClose() })}
-        {menuItem('🗑', 'Delete', 'Del', deleteBlock, true)}
+            <div className="h-px bg-[#2a2a2a] my-1" />
 
-        <div className="h-px bg-[#2a2a2a] my-1" />
+            {menuItem('⊕',  'Insert below',  undefined, insertBelow)}
+            {menuItem('🔗', 'Copy link',      'Alt+⇧+L', copyLink)}
+            {menuItem('⧉',  'Copy text',      'Ctrl+C',  copyText)}
+            {menuItem('⧉',  'Duplicate',      'Ctrl+D',  duplicate)}
+            {menuItem('→',  'Move to',        undefined, () => { toast('Use drag & drop to move blocks'); onClose() })}
 
-        {menuItem('💬', 'Comment', 'Ctrl+⇧+M', () => { toast('Comments coming soon'); onClose() })}
-        {menuItem('✏️', 'Suggest edits', 'Ctrl+⇧+Alt+X', () => { toast('Suggest edits coming soon'); onClose() })}
+            <div className="h-px bg-[#2a2a2a] my-1" />
 
-        <div className="h-px bg-[#2a2a2a] my-1" />
-
-        <button
-          onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); askAI() }}
-          disabled={aiLoading}
-          className="w-full flex items-center gap-2.5 px-3 py-1.5 hover:bg-violet-500/15 text-violet-400 rounded-md transition-colors disabled:opacity-50"
-        >
-          <span className="w-4 text-center text-[11px]">✦</span>
-          <span className="flex-1">{aiLoading ? 'AI working…' : 'Ask AI'}</span>
-          <span className="text-[10px] text-[#555] font-mono">Ctrl+J</span>
-        </button>
+            {menuItem('💬', 'Comment',        'Ctrl+⇧+M', () => { toast('Comments coming soon!'); onClose() })}
+            {menuItem('🗑', 'Delete',          'Del',      deleteBlock, true)}
+          </>
+        )}
       </div>
     </div>
   )
@@ -450,10 +687,14 @@ function BlockContextMenu({ blockId, editor, position, onClose }: ContextMenuPro
 // ─── AI Formatting Toolbar ─────────────────────────────────────────────────────
 
 const AI_SKILLS = [
-  { label: 'Improve writing', prompt: 'Improve the writing quality of this text, making it clearer and more polished:', icon: '✨' },
-  { label: 'Proofread',       prompt: 'Fix all grammar, spelling, and punctuation errors in this text:', icon: '🔍' },
-  { label: 'Explain',         prompt: 'Provide a clear explanation of this text in simple terms:', icon: '💡', append: true },
-  { label: 'Reformat',        prompt: 'Reformat this text with better structure, using bullet points or headings where appropriate:', icon: '⚙️' },
+  { label: 'Improve writing',  prompt: 'Improve the writing quality of this text, making it clearer and more polished:', icon: '✨' },
+  { label: 'Proofread',        prompt: 'Fix all grammar, spelling, and punctuation errors in this text:', icon: '🔍' },
+  { label: 'Summarize',        prompt: 'Summarize this text concisely in 2-3 sentences:', icon: '📝' },
+  { label: 'Make shorter',     prompt: 'Make this text more concise without losing key meaning:', icon: '✂️' },
+  { label: 'Explain simply',   prompt: 'Explain this text in simple, plain English terms:', icon: '💡', append: true },
+  { label: 'Reformat',         prompt: 'Reformat this text with better structure using headings and bullet points:', icon: '⚙️' },
+  { label: 'Add emoji',        prompt: 'Enhance this text by adding relevant emojis naturally throughout:', icon: '🎨' },
+  { label: 'Action items',     prompt: 'Extract and list action items as - [ ] checkboxes:', icon: '☑️', append: true },
 ]
 
 function AIFormattingToolbar() {
@@ -482,15 +723,14 @@ function AIFormattingToolbar() {
     }
   }, [])
 
-  const runSkill = async (prompt: string, append = false) => {
+  const runSkill = async (prompt: string, label: string, append = false) => {
     const text = getSelectedText()
     if (!text) { toast('Select some text first'); return }
     setLoading(true)
-    setActiveSkill(prompt)
+    setActiveSkill(label)
     try {
       const result = await callAI(prompt, text)
       if (append) {
-        // Append explanation after selection
         const sel = window.getSelection()
         if (sel && sel.rangeCount > 0) {
           const range = sel.getRangeAt(0)
@@ -501,7 +741,7 @@ function AIFormattingToolbar() {
       } else {
         replaceSelectedText(result)
       }
-      toast.success('Done!')
+      toast.success(`✦ ${label} done!`)
     } catch { toast.error('AI request failed') }
     setLoading(false)
     setActiveSkill(null)
@@ -516,7 +756,7 @@ function AIFormattingToolbar() {
     try {
       const result = await callAI(editPrompt, text)
       replaceSelectedText(result)
-      toast.success('Done!')
+      toast.success('✦ Done!')
     } catch { toast.error('AI request failed') }
     setLoading(false)
     setEditOpen(false)
@@ -526,16 +766,15 @@ function AIFormattingToolbar() {
 
   return (
     <div className="flex items-center gap-0.5 relative" onMouseDown={(e) => e.stopPropagation()}>
-      {/* ─── AI Skills Button ─── */}
       <div className="relative">
         <button
           onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setAiOpen((v) => !v); setEditOpen(false) }}
           disabled={loading}
-          className="flex items-center gap-1 px-2 py-1 rounded-md text-[12px] font-medium text-violet-400 hover:bg-violet-500/15 transition-colors disabled:opacity-50"
-          title="AI Skills"
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[12px] font-medium text-violet-400 hover:bg-violet-500/15 transition-colors disabled:opacity-50 border border-violet-500/20"
+          title="AI Writing Skills (select text first)"
         >
           <span className="text-[11px]">✦</span>
-          <span>{loading ? activeSkill?.split(' ')[0] + '…' : 'Skills'}</span>
+          <span>{loading ? (activeSkill?.split(' ')[0] + '…') : 'AI'}</span>
           {loading && (
             <svg className="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
@@ -545,25 +784,25 @@ function AIFormattingToolbar() {
 
         {aiOpen && !loading && (
           <div
-            className="absolute bottom-full left-0 mb-1 w-48 rounded-xl border border-[#2a2a2a] bg-[#1c1c1c] shadow-2xl py-1.5 text-[13px]"
+            className="absolute bottom-full left-0 mb-1 w-52 rounded-xl border border-[#2a2a2a] bg-[#1c1c1c] shadow-2xl py-1.5 text-[13px]"
             style={{ zIndex: 99999 }}
             onMouseDown={(e) => e.stopPropagation()}
           >
-            <p className="px-3 py-1 text-[10px] text-[#555] uppercase tracking-wider">Skills</p>
+            <p className="px-3 py-1 text-[10px] text-[#555] uppercase tracking-wider">AI Skills</p>
             {AI_SKILLS.map((skill) => (
               <button
                 key={skill.label}
-                onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); runSkill(skill.prompt, skill.append) }}
+                onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); runSkill(skill.prompt, skill.label, skill.append) }}
                 className="w-full flex items-center gap-2.5 px-3 py-1.5 hover:bg-violet-500/10 text-[#e5e5e5] text-[13px] rounded-md transition-colors"
               >
-                <span className="text-[12px]">{skill.icon}</span>
+                <span className="text-[12px] w-4 shrink-0">{skill.icon}</span>
                 <span>{skill.label}</span>
               </button>
             ))}
 
             <div className="h-px bg-[#2a2a2a] my-1" />
 
-            {/* Edit with AI */}
+            {/* Custom prompt */}
             <div className="px-2 pb-1.5">
               {!editOpen ? (
                 <button
@@ -571,7 +810,7 @@ function AIFormattingToolbar() {
                   className="w-full flex items-center gap-2.5 px-2 py-1.5 hover:bg-violet-500/10 text-violet-400 rounded-md text-[13px] transition-colors"
                 >
                   <span className="text-[12px]">✎</span>
-                  <span>Edit with AI</span>
+                  <span>Custom prompt</span>
                   <span className="ml-auto text-[10px] text-[#555] font-mono">Alt+⇧+E</span>
                 </button>
               ) : (
@@ -604,29 +843,12 @@ function AIFormattingToolbar() {
   )
 }
 
-// ─── Custom Formatting Toolbar ─────────────────────────────────────────────────
-
-function CustomFormattingToolbar() {
-  return (
-    <FormattingToolbar>
-      {/* Default formatting buttons */}
-      <div className="bn-toolbar-group">
-        {/* BlockNote renders its default buttons here automatically */}
-      </div>
-      {/* AI Skills appended at the end */}
-      <AIFormattingToolbar />
-    </FormattingToolbar>
-  )
-}
-
-
-// ─── Notion-style Slash Menu Component ───────────────────────────────────────
+// ─── Notion-style Slash Menu ──────────────────────────────────────────────────
 
 function NotionSlashMenu(props: any) {
   const { items, loadingState, selectedIndex, onItemClick } = props
   if (loadingState === 'loading-initial') return null
 
-  // Build ordered flat list for correct index tracking, then group for display
   const groupOrder = ['Headings', 'Basic blocks', 'Advanced', 'Media', 'Other']
   const grouped: Record<string, Array<{ item: any; flatIdx: number }>> = {}
   items.forEach((item: any, flatIdx: number) => {
@@ -645,10 +867,10 @@ function NotionSlashMenu(props: any) {
       style={{
         background: '#191919',
         border: '1px solid rgba(255,255,255,0.08)',
-        borderRadius: 8,
-        boxShadow: '0 4px 24px rgba(0,0,0,0.8)',
-        width: 300,
-        maxHeight: 400,
+        borderRadius: 10,
+        boxShadow: '0 8px 32px rgba(0,0,0,0.85)',
+        width: 310,
+        maxHeight: 420,
         overflowY: 'auto',
         padding: '6px 0',
         zIndex: 9999,
@@ -661,8 +883,8 @@ function NotionSlashMenu(props: any) {
             fontWeight: 600,
             textTransform: 'uppercase',
             letterSpacing: '0.07em',
-            color: 'rgba(255,255,255,0.3)',
-            padding: '8px 12px 4px',
+            color: 'rgba(255,255,255,0.28)',
+            padding: '8px 14px 4px',
           }}>
             {group}
           </div>
@@ -676,36 +898,43 @@ function NotionSlashMenu(props: any) {
                   display: 'flex',
                   alignItems: 'center',
                   gap: 10,
-                  width: '100%',
+                  width: 'calc(100% - 8px)',
                   padding: '5px 10px',
                   background: isSelected ? 'rgba(255,255,255,0.08)' : 'transparent',
                   border: 'none',
                   cursor: 'pointer',
                   textAlign: 'left',
-                  borderRadius: 5,
+                  borderRadius: 6,
                   margin: '1px 4px',
+                  transition: 'background 0.1s',
                 }}
               >
                 <div style={{
                   width: 32,
                   height: 32,
                   minWidth: 32,
-                  borderRadius: 5,
-                  background: isSelected ? 'rgba(139,92,246,0.2)' : 'rgba(255,255,255,0.07)',
+                  borderRadius: 6,
+                  background: isSelected ? 'rgba(139,92,246,0.20)' : 'rgba(255,255,255,0.07)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   fontSize: 15,
-                  color: 'rgba(255,255,255,0.8)',
+                  color: isSelected ? '#a78bfa' : 'rgba(255,255,255,0.75)',
+                  transition: 'all 0.1s',
                 }}>
                   {item.icon}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 500, color: isSelected ? '#fff' : 'rgba(255,255,255,0.9)', lineHeight: 1.3 }}>
+                  <div style={{
+                    fontSize: 13,
+                    fontWeight: 500,
+                    color: isSelected ? '#fff' : 'rgba(255,255,255,0.88)',
+                    lineHeight: 1.3,
+                  }}>
                     {item.title}
                   </div>
                   {item.subtext && (
-                    <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', marginTop: 1 }}>
+                    <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.32)', marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {item.subtext}
                     </div>
                   )}
@@ -716,8 +945,8 @@ function NotionSlashMenu(props: any) {
         </div>
       ))}
       {items.length === 0 && (
-        <div style={{ padding: '12px 16px', fontSize: 13, color: 'rgba(255,255,255,0.3)', textAlign: 'center' }}>
-          No results
+        <div style={{ padding: '16px', fontSize: 13, color: 'rgba(255,255,255,0.28)', textAlign: 'center' }}>
+          No results — try a different keyword
         </div>
       )}
     </div>
@@ -748,7 +977,7 @@ export default function Editor({ initialContent, onChange }: EditorProps) {
     position: { x: number; y: number }
   } | null>(null)
 
-  // YouTube paste
+  // ── YouTube paste detection ───────────────────────────────────────────────
   useEffect(() => {
     if (!editor) return
     const handlePaste = (e: ClipboardEvent) => {
@@ -761,7 +990,7 @@ export default function Editor({ initialContent, onChange }: EditorProps) {
     return () => window.removeEventListener('paste', handlePaste)
   }, [editor])
 
-  // Video uploaded event
+  // ── Video upload event ────────────────────────────────────────────────────
   useEffect(() => {
     if (!editor) return
     const handleVideoUploaded = (e: Event) => {
@@ -772,24 +1001,29 @@ export default function Editor({ initialContent, onChange }: EditorProps) {
     return () => window.removeEventListener('video-uploaded', handleVideoUploaded)
   }, [editor])
 
-  // Content change
+  // ── Content change ────────────────────────────────────────────────────────
   useEffect(() => {
     if (!editor) return
     const unsubscribe = editor.onChange(() => { changeRef.current?.(editor.document as Block[]) })
     return () => unsubscribe?.()
   }, [editor])
 
-  // Context menu via right-click — try multiple BlockNote DOM selectors
+  // ── Right-click context menu ──────────────────────────────────────────────
+  // Strategy: walk up the DOM from the target to find a block with [data-id].
+  // Fall back to the cursor position if the DOM walk fails.
   useEffect(() => {
     const getBlockIdFromTarget = (target: HTMLElement): string | null => {
-      const selectors = ['[data-id]', '[data-node-id]', '[data-block-id]', '.bn-block-outer', '.bn-block']
-      for (const sel of selectors) {
-        const el = target.closest(sel) as HTMLElement | null
-        if (el) {
-          const id = el.dataset.id || el.dataset.nodeId || el.dataset.blockId
-          if (id) return id
-        }
+      let el: HTMLElement | null = target
+      while (el && el !== document.body) {
+        const id =
+          el.dataset.id ||
+          el.dataset.nodeId ||
+          el.dataset.blockId ||
+          (el.classList.contains('bn-block-outer') ? el.getAttribute('data-id') : null)
+        if (id) return id
+        el = el.parentElement
       }
+      // Fallback: use editor cursor position
       try {
         const pos = (editor as any)?.getTextCursorPosition?.()
         return pos?.block?.id || null
@@ -810,7 +1044,7 @@ export default function Editor({ initialContent, onChange }: EditorProps) {
     return () => document.removeEventListener('contextmenu', handleContextMenu)
   }, [editor])
 
-  // Ctrl+J → Ask AI on focused block
+  // ── Ctrl+J → open AI context menu on cursor block ────────────────────────
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'j') {
@@ -819,68 +1053,24 @@ export default function Editor({ initialContent, onChange }: EditorProps) {
         if (!block) return
         const el = document.querySelector(`[data-id="${block.id}"]`) as HTMLElement | null
         const rect = el?.getBoundingClientRect()
-        setContextMenu({ blockId: block.id, position: { x: rect?.left || 200, y: rect?.bottom || 200 } })
+        setContextMenu({ blockId: block.id, position: { x: rect?.left || 200, y: (rect?.bottom || 200) + 8 } })
       }
     }
     document.addEventListener('keydown', handler)
     return () => document.removeEventListener('keydown', handler)
   }, [editor])
 
-  // Draggable floating panels — only slash/suggestion menus, not the formatting toolbar
+  // ── Slash menu keyboard: Escape closes context menu ───────────────────────
   useEffect(() => {
-    const makeDraggable = (el: HTMLElement) => {
-      if (el.dataset.draggable) return
-      // Skip the formatting toolbar (it's inline, not a floating panel)
-      if (el.closest('[data-bn-formatting-toolbar]') || el.classList.contains('bn-formatting-toolbar')) return
-      el.dataset.draggable = '1'
-
-      // Add a subtle drag handle feel only on the panel header area, not the whole element
-      // so it doesn't conflict with editor text cursor
-      const onDown = (e: MouseEvent) => {
-        const t = e.target as HTMLElement
-        if (t.closest('button') || t.closest('input') || t.closest('a') || t.closest('[role="option"]')) return
-        // Only drag if clicking on non-interactive area
-        if (t.closest('[contenteditable]')) return
-
-        const rect = el.getBoundingClientRect()
-        el.style.position = 'fixed'
-        el.style.left = rect.left + 'px'
-        el.style.top = rect.top + 'px'
-        el.style.transform = 'none'
-        el.style.transition = 'none'
-        el.style.willChange = 'auto'
-
-        let lastX = e.clientX
-        let lastY = e.clientY
-
-        const onMove = (me: MouseEvent) => {
-          const dx = me.clientX - lastX
-          const dy = me.clientY - lastY
-          lastX = me.clientX
-          lastY = me.clientY
-          el.style.left = (parseFloat(el.style.left) + dx) + 'px'
-          el.style.top = (parseFloat(el.style.top) + dy) + 'px'
-        }
-
-        const onUp = () => {
-          window.removeEventListener('mousemove', onMove)
-          window.removeEventListener('mouseup', onUp)
-        }
-
-        e.preventDefault()
-        window.addEventListener('mousemove', onMove)
-        window.addEventListener('mouseup', onUp)
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && contextMenu) {
+        setContextMenu(null)
+        e.stopPropagation()
       }
-
-      el.addEventListener('mousedown', onDown)
     }
-
-    const observer = new MutationObserver(() => {
-      document.querySelectorAll<HTMLElement>('[data-floating-ui-focusable]').forEach(makeDraggable)
-    })
-    observer.observe(document.body, { childList: true, subtree: true })
-    return () => observer.disconnect()
-  }, [])
+    document.addEventListener('keydown', handler, true)
+    return () => document.removeEventListener('keydown', handler, true)
+  }, [contextMenu])
 
   return (
     <>
@@ -892,7 +1082,7 @@ export default function Editor({ initialContent, onChange }: EditorProps) {
           formattingToolbar={false}
           sideMenu={false}
         >
-          {/* Custom formatting toolbar with AI skills */}
+          {/* Formatting toolbar with AI skills */}
           <FormattingToolbarController
             formattingToolbar={() => (
               <FormattingToolbar>
@@ -901,27 +1091,36 @@ export default function Editor({ initialContent, onChange }: EditorProps) {
             )}
           />
 
-          {/* Custom Side Menu with context menu trigger */}
+          {/* Side menu — drag handle only (context menu via right-click) */}
           <SideMenuController
             sideMenu={(props) => (
               <SideMenu {...props}>
                 <AddBlockButton {...props} />
                 <DragHandleButton
                   {...props}
-                  dragHandleMenu={(dhProps) => (
-                    <div style={{ display: 'none' }} />
-                  )}
+                  dragHandleMenu={() => <div style={{ display: 'none' }} />}
                 />
               </SideMenu>
             )}
           />
 
-          {/* Notion-style Slash menu */}
+          {/* Slash menu with all block types */}
           <SuggestionMenuController
             triggerCharacter="/"
             getItems={async (query) =>
               filterSuggestionItems(
-                [...getDefaultReactSlashMenuItems(editor), insertVideoItem(editor), insertYouTubeItem(editor)],
+                [
+                  ...getDefaultReactSlashMenuItems(editor),
+                  insertTableItem(editor),
+                  insertDividerItem(editor),
+                  insertVideoItem(editor),
+                  insertYouTubeItem(editor),
+                  insertCalloutItem(editor, 'info'),
+                  insertCalloutItem(editor, 'warning'),
+                  insertCalloutItem(editor, 'success'),
+                  insertCalloutItem(editor, 'error'),
+                  insertCalloutItem(editor, 'tip'),
+                ],
                 query
               )
             }
@@ -930,7 +1129,7 @@ export default function Editor({ initialContent, onChange }: EditorProps) {
         </BlockNoteView>
       </div>
 
-      {/* Custom Context Menu */}
+      {/* Right-click context menu */}
       {contextMenu && (
         <BlockContextMenu
           blockId={contextMenu.blockId}
